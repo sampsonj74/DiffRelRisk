@@ -16,16 +16,16 @@
 #' @param n3 The total number of subjects in the third group (either a single number if there is one strata or a vector if there are multiple strata)
 #' @param n4 The total number of subjects in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata)
 #' @param alpha The two-sided error rate for the confidence interval (i.e. 0.05 for a 95\% confidence interval)
-#' @param altParam A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata)
+#' @param altParam A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata; 0 for strata-specific values and 1 for a value)
 #' @param refPop The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)
+#' @param LRT A binary variable indivicating whether likelihood-based confidence interval should be use (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)
 #' @param tr The treatment group for each subject (a vector with one value per subject; values are either 0, 1, or 2; only required if want to adjust for covariates)
 #' @param Y The outcome for each subject (a vector with one value per subject; values are either 0 or 1; only required if want to adjust for covariates)
 #' @param Z The covariates for each subject (a matrix with one value per subject and one column per covariate; only required if want to adjust for covariates)
-#' @param method.rr The method used for calculating the confidence interval (options are "OP" - one control group; "TP" - two control groups; "CO" - covariate adjustment)
 #' @return EST The estimated difference in relative risks
 #' @return LB The lower bound for the difference
 #' @return UB The upper bound for the difference
-#' @return beta The MLE (and asymptotic SE) for the coefficients for individual level covariates (when method.rr=CO)
+#' @return beta The MLE (and asymptotic SE) for the coefficients for individual level covariates (when adjusting for covariates)
 #' @examples DRRCI(x1=20,x2=50,x3=100,n1=1000,n2=1000,n3=1000)
 #' @examples #The simplest case where I have three groups and
 #' @examples #want to estimate (50/1000 - 20/1000)/(100/1000)
@@ -35,20 +35,20 @@
 #' @examples #here I could use altParam = 1 if I wanted to use the alternative parameterization
 #' @examples #here I could use refPop   = "All" (or the other options) if I wanted to use direct standardization
 #' @examples ##
-#' @examples DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90,method.rr="TP")
-#' @examples #I now have a separate "control" group for each treatment group; currently, need to set method.rr="TP"
+#' @examples DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90)
+#' @examples #I now have a separate "control" group for each treatment group
 #' @examples ##
 #' @examples tr = rep(c(0,1,2),each=100)
 #' @examples Y  = c(rep(1,30),rep(0,70),rep(1,10),rep(0,90),rep(1,20),rep(0,80))
 #' @examples Z  = cbind(1,rnorm(300),rnorm(300))
-#' @examples DRRCI(tr=tr,Y=Y,Z=Z,method.rr="CO")
-#' @examples #I now adjust for covariates; currently, need to set method.rr="CO" and let the first column of Z be a vector of 1's
+#' @examples DRRCI(tr=tr,Y=Y,Z=Z)
+#' @examples #I now adjust for covariates
 #' @export
 #'
 
+DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,refPop=NA,LRT=0){
 
-DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,refPop=NA,LRT=0,unCond=0){
-
+  unCond=0
   method.rr <- "OP"
   if (!is.na(x4[1])) method.rr = "TP"
   if (length(Y)>1)   method.rr = "CO"
@@ -802,9 +802,9 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
   prevMin <- 99999999999
   mult    <- 1
   out     <- NA
-  print("WARNING: The main function is now identifying the MLE for the liklihood by searching over a grid. This is a time-intensive step.")
-  print("WARNING: If there are a large number of strata (or covariates), this grid search may take > 10-20 minutes.")
-  for (nattempt in 1:1000){
+  #print("WARNING: The main function is now identifying the MLE for the liklihood by searching over a grid. This is a time-intensive step.")
+  #print("WARNING: If there are a large number of strata (or covariates), this grid search may take > 10-20 minutes.")
+  for (nattempt in 1:10000){
     for (curIndex in 1:nparam){
       if (curIndex <   length(allParam) & method.rr=="OP") poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-0.1*mult,0.0001),min(allParam[curIndex]+0.1*mult,0.9999),length.out=10)))
       if (curIndex ==  length(allParam) & method.rr=="OP") poss.vals <- sort(c(allParam[curIndex],seq    (allParam[curIndex]-0.1*mult,            allParam[curIndex]+0.1*mult,        length.out=10)))
@@ -827,7 +827,7 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
       func.vals <- matrix(nrow=npv,ncol=1)
       for (i in 1:npv) {allParam[curIndex]=poss.vals[i]
       if (method.rr=="OP" & altParam==0) func.vals[i] <- fL.OP(NA,allParam[1:s],allParam[(s+1):(2*s)],allParam[2*s+1],x1,x2,x3,n1,n2,n3)
-      if (method.rr=="OP" & altParam==1) func.vals[i] <- fL.OP2(allParam[1],NA,allParam[(2):(s+1)],allParam[s+2],x1,x2,x3,n1,n2,n3)
+      if (method.rr=="OP" & altParam==1) func.vals[i] <- fL.OP(allParam[1],NA,allParam[(2):(s+1)],allParam[s+2],x1,x2,x3,n1,n2,n3)
       if (method.rr=="CO")               func.vals[i] <- fL.CO(allParam[length(allParam)],allParam[1],allParam[-c(1,length(allParam))],Y,Z,tr)
       if (method.rr=="TP")               func.vals[i] <- fL.TP(allParam[1:s],allParam[length(allParam)],allParam[(s+1):(2*s)],allParam[(2*s+1):(3*s)],x1,x2,x3,x4,n1,n2,n3,n4)
       }
@@ -890,7 +890,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
         resb     <- nleqslv2(x=c(pa[sss],p3[sss]),fn=fL.pap3.parms,parms=c(1,x1[sss],x2[sss],x3[sss],n1[sss],n2[sss],n3[sss],r,1),positive=TRUE)
         ll.start <- fL.pap3.parms(c(pa[sss],p3[sss]),parms=c(1,x1[sss],x2[sss],x3[sss],n1[sss],n2[sss],n3[sss],r,0))
         try(ll.end   <- fL.pap3.parms(resb$root,         parms=c(1,x1[sss],x2[sss],x3[sss],n1[sss],n2[sss],n3[sss],r,0)),silent=TRUE)
-        if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start)) ok <- 0
+        if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0) ok <- 0
         if (ok==1) pa.out[sss]  <- resb$root[1]
         if (ok==1) p3.out[sss]  <- resb$root[2]
         if (ok==1)             out <- list("pa"=pa.out,"p3"=p3.out)
@@ -902,7 +902,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb      <- nleqslv2(x=c(pa,p3,r+5),fn=fL.pap3r.parms.m5,parms=c(length(x1),x1,x2,x3,n1,n2,n3,1),positive=TRUE)
       ll.start  <- fL.pap3r.parms.m5(c(pa,p3,r+5),parms=c(length(x1),x1,x2,x3,n1,n2,n3,0))
       try(ll.end    <- fL.pap3r.parms.m5(resb$root,   parms=c(length(x1),x1,x2,x3,n1,n2,n3,0)),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) )ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
       if (ok==1)             out  <- resb$root[2*s+1] -5
       if (allRes==1 & ok==1) out  <- resb$root - c(rep(0,2*s),5)
     }
@@ -916,7 +916,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb     <- nleqslv2(x=c(t,p3),fn=fL.tp3.parms,parms=c(s,x1,x2,x3,n1,n2,n3,r,1),positive=TRUE)
       ll.start <- fL.tp3.parms(c(t,p3),  parms=c(s,x1,x2,x3,n1,n2,n3,r,0))
       try(ll.end   <- fL.tp3.parms(resb$root,parms=c(s,x1,x2,x3,n1,n2,n3,r,0)),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start)) ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0) ok <- 0
       if (ok==1) t.out   <- resb$root[1]
       if (ok==1) p3.out  <- resb$root[-1]
       if (ok==1)             out <- list("t"=t.out,"p3"=p3.out)
@@ -927,7 +927,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb      <- nleqslv2(x=c(t,p3,r+5),fn=fL.tp3r.parms.m5,parms=c(length(x1),x1,x2,x3,n1,n2,n3,1),positive=TRUE)
       ll.start  <- fL.tp3r.parms.m5(c(t,p3,r+5),parms=c(length(x1),x1,x2,x3,n1,n2,n3,0))
       try(ll.end    <- fL.tp3r.parms.m5(resb$root,   parms=c(length(x1),x1,x2,x3,n1,n2,n3,0)),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) )ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
       if (ok==1)             out  <- resb$root[s+2]-5
       if (allRes==1 & ok==1) out <- resb$root - c(rep(0,s+1),5)
     }
@@ -941,7 +941,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb     <- nleqslv2(x=c(k,b),fn=fL.kb.parms,parms=c(length(Y),r,1,Y,tr,c(Z)))
       ll.start <- fL.kb.parms(c(k,b),  parms=c(length(Y),r,0,Y,tr,c(Z)))
       try(ll.end   <- fL.kb.parms(resb$root,parms=c(length(Y),r,0,Y,tr,c(Z))),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start)) ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0) ok <- 0
       if (ok==1) k.out   <- resb$root[1]
       if (ok==1) b.out  <- resb$root[-1]
       if (ok==1)             out <- list("k"=k.out,"b"=b.out)
@@ -952,7 +952,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb      <- nleqslv2(x=c(k,b,r),fn=fL.kbr.parms,parms=c(length(Y),1,Y,tr,c(Z)))
       ll.start  <- fL.kbr.parms(c(k,b,r),parms=c(length(Y),0,Y,tr,c(Z)))
       try(ll.end    <- fL.kbr.parms(resb$root,   parms=c(length(Y),0,Y,tr,c(Z))),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) )ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
       if (ok==1)             out  <- resb$root[length(c(k,b))+1]
       if (allRes==1 & ok==1) out <- resb$root
     }
@@ -966,7 +966,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
         resb     <- nleqslv2(x=c(tp[sss],p3[sss],p4[sss]),fn=fL.tp01p02.parms,parms=c(1,x1[sss],x2[sss],x3[sss],x4[sss],n1[sss],n2[sss],n3[sss],n4[sss],r,1),positive=TRUE)
         ll.start <- fL.tp01p02.parms(c(tp[sss],p3[sss],p4[sss]),parms=c(1,x1[sss],x2[sss],x3[sss],x4[sss],n1[sss],n2[sss],n3[sss],n4[sss],r,0))
         try(ll.end   <- fL.tp01p02.parms(resb$root,         parms=c(1,x1[sss],x2[sss],x3[sss],x4[sss],n1[sss],n2[sss],n3[sss],n4[sss],r,0)),silent=TRUE)
-        if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start)) ok <- 0
+        if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0) ok <- 0
         if (ok==1) tp.out[sss]  <- resb$root[1]
         if (ok==1) p3.out[sss]  <- resb$root[2]
         if (ok==1) p4.out[sss]  <- resb$root[3]
@@ -979,7 +979,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       resb      <- nleqslv2(x=c(tp,p3,p4,r+5),fn=fL.tp01p02r.parms.m5,parms=c(length(x1),x1,x2,x3,x4,n1,n2,n3,n4,1),positive=TRUE)
       ll.start  <- fL.tp01p02r.parms.m5(c(tp,p3,p4,r+5),parms=c(length(x1),x1,x2,x3,x4,n1,n2,n3,n4,0))
       try(ll.end    <- fL.tp01p02r.parms.m5(resb$root,   parms=c(length(x1),x1,x2,x3,x4,n1,n2,n3,n4,0)),silent=TRUE)
-      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) )ok <- 0
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
       if (ok==1)             out  <- resb$root[3*s+1] -5
       if (allRes==1 & ok==1) out  <- resb$root - c(rep(0,3*s),5)
     }
@@ -991,9 +991,11 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
 }
 
 optim.DSS <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
+  ideal = 1
   optim.out <- optim.ideal(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)
-  if (optim.out$ok==0) optim.out <- optim.force(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)
-  optim.out$out
+  if (optim.out$ok==0) {ideal=0
+  optim.out <- optim.force(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)}
+  list("out"=optim.out$out,"ideal"=ideal)
 }
 
 
@@ -1007,23 +1009,23 @@ optim.DSS <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,met
 
 
 opt.OP1 <- function(r,pa.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0){
-  optim.DSS(pa=pa.start,p3=p3.start,t=NA,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)
+  optim.DSS(pa=pa.start,p3=p3.start,t=NA,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
 }
 
 
 opt.OP2 <- function(r,t.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0){
-  optim.DSS(pa=NA,p3=p3.start,t=t.start,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=1,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)
+  optim.DSS(pa=NA,p3=p3.start,t=t.start,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=1,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
 }
 
 
 opt.TP <- function(r,t.start,p01.start,p02.start,x1,x2,x01,x02,n1,n2,n01,n02,allRes=0){
-  optim.DSS(pa=NA,p3=p01.start,t=NA,r=r,k=NA,b=NA,p4=p02.start,tp=t.start,altParam=0,method.rr="TP",x1,x2,x01,x02,n1,n2,n01,n02,n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)
+  optim.DSS(pa=NA,p3=p01.start,t=NA,r=r,k=NA,b=NA,p4=p02.start,tp=t.start,altParam=0,method.rr="TP",x1,x2,x01,x02,n1,n2,n01,n02,n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
 }
 
 
 
 opt.CO <- function(r,k.start,b.start,tr,Z,Y,allRes=0){
-  optim.DSS(pa=NA,p3=NA,t=NA,r=r,k=k.start,b=b.start,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=1,allRes=allRes)
+  optim.DSS(pa=NA,p3=NA,t=NA,r=r,k=k.start,b=b.start,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=1,allRes=allRes)$out
 }
 
 
@@ -1037,16 +1039,16 @@ opt.CO <- function(r,k.start,b.start,tr,Z,Y,allRes=0){
 
 
 getEst.OP <- function(init.pa=NA,init.t=NA,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,allRes=0,forceRoot=0){
-  optim.DSS(pa=init.pa,p3=init.p3,t=init.t,r=init.r,k=NA,b=NA,p4=NA,tp=NA,altParam=altParam,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)
+  optim.DSS(pa=init.pa,p3=init.p3,t=init.t,r=init.r,k=NA,b=NA,p4=NA,tp=NA,altParam=altParam,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)$out
 }
 
 getEst.TP <- function(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4,allRes=0){
-  optim.DSS(pa=NA,p3=init.p3,t=NA,r=init.r,k=NA,b=NA,p4=init.p4,tp=init.tp,altParam=0,method.rr="TP",x1,x2,x3,x4,n1,n2,n3,n4,n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)
+  optim.DSS(pa=NA,p3=init.p3,t=NA,r=init.r,k=NA,b=NA,p4=init.p4,tp=init.tp,altParam=0,method.rr="TP",x1,x2,x3,x4,n1,n2,n3,n4,n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)$out
 }
 
 
 getEst.CO <- function(init.k,init.b,init.r,Y,Z,tr,allRes=0){
-  optim.DSS(pa=NA,p3=NA,t=NA,r=init.r,k=init.k,b=init.b,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=0,allRes=allRes)
+  optim.DSS(pa=NA,p3=NA,t=NA,r=init.r,k=init.k,b=init.b,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=0,allRes=allRes)$out
 }
 
 
@@ -1122,35 +1124,45 @@ getZ2.CO <- function(r,k,b,tr,Z,Y,unCond=0) {
 ####################################################################################################################
 
 
-getZ.OP1 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0){
-  sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
+getZ.OP1 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA){
+  if (sum(!is.na(sv))==0) sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
   sv2 <- opt.OP1(r,sv$pa,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot)
-  getZ2.OP1(sv2$pa,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
+  Z <- getZ2.OP1(sv2$pa,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
+  list("Z"=Z,"sv2"=sv2)
 }
 
 
-getZ.OP2 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0){
-  sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
+getZ.OP2 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA){
+  if (sum(!is.na(sv))==0) sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
   sv2 <- opt.OP2(r,sv$t,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot)
-  getZ2.OP2(sv2$t,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
+  Z <- getZ2.OP2(sv2$t,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
+  list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.TP <- function(r,x1,x2,x01,x02,n1,n2,n01,n02,unCond=0){
-  sv  <- startVals.TP(x1,x2,x01,x02,n1,n2,n01,n02,r)
+getZ.TP <- function(r,x1,x2,x01,x02,n1,n2,n01,n02,unCond=0,sv=NA){
+  if (sum(!is.na(sv))==0)  sv  <- startVals.TP(x1,x2,x01,x02,n1,n2,n01,n02,r)
   sv2 <- opt.TP(r,sv$t,sv$p01,sv$p02,x1,x2,x01,x02,n1,n2,n01,n02)
-  getZ2.TP(r,sv2$t,sv2$p01,sv2$p02,x1,x2,x01,x02,n1,n2,n01,n02,unCond)
+  Z <- getZ2.TP(r,sv2$t,sv2$p01,sv2$p02,x1,x2,x01,x02,n1,n2,n01,n02,unCond)
+  list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.CO <- function(r,tr,Z,Y,unCond=0){
-  sv  <- startVals.CO(r,tr,Z,Y)
+getZ.CO <- function(r,tr,Z,Y,unCond=0,sv=NA){
+  if (sum(!is.na(sv))==0) sv  <- startVals.CO(r,tr,Z,Y)
   sv2 <- opt.CO(r,sv$k,sv$b,tr,Z,Y)
-  getZ2.CO(r,sv2$k,sv2$b,tr,Z,Y,unCond)
+  Z<- getZ2.CO(r,sv2$k,sv2$b,tr,Z,Y,unCond)
+  list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.OP <- function(r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,forceRoot=0){
-  if (altParam==0) Z <- getZ.OP1(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot)
-  if (altParam==1) Z <- getZ.OP2(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot)
-  Z
+getZ.OP <- function(r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,forceRoot=0,sv=NA){
+  if (altParam==0) {ZSV <- getZ.OP1(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv)
+  Z   <- ZSV$Z
+  sv2 <- ZSV$sv2
+  }
+  if (altParam==1) {ZSV <- getZ.OP2(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv)
+  Z   <- ZSV$Z
+  sv2 <- ZSV$sv2
+  }
+  list("Z"=Z,"sv2"=sv2)
 }
 
 
@@ -1291,10 +1303,13 @@ startR.CO <- function(tr,Z,Y){
 
 ####Find the value of r that gives a z statistic that equals qnorm(alpha2) or qnorm(1-alpha2)
 ####
-findR.int <- function(r,alpha2,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,altParam=0,method.rr="OP",unCond=0)    {if (method.rr=="OP") out <- abs(    abs(getZ.OP(r,x1,x2,x3,n1,n2,n3,altParam,unCond,forceRoot=1)) - abs(qnorm(alpha2))  )
-if (method.rr=="TP") out <- abs(    abs(getZ.TP(r,x1,x2,x3,x4,n1,n2,n3,n4,unCond,forceRoot=1))    - abs(qnorm(alpha2))  )
-if (method.rr=="CO") out <- abs(    abs(getZ.CO(r,tr,Z,Y,unCond))    - abs(qnorm(alpha2))  )
-out}
+findR.int <- function(r,alpha2,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,altParam=0,method.rr="OP",unCond=0,sv=NA)    {if (method.rr=="OP") out1 <- getZ.OP(r,x1,x2,x3,n1,n2,n3,altParam,unCond,forceRoot=1,sv=sv)
+if (method.rr=="TP") out1 <- getZ.TP(r,x1,x2,x3,x4,n1,n2,n3,n4,unCond,forceRoot=1,sv=sv)
+if (method.rr=="CO") out1 <- getZ.CO(r,tr,Z,Y,unCond,sv=sv)
+
+out <- abs(    abs(out1$Z) - abs(qnorm(alpha2))  )
+sv2 <- out1$sv2
+list("out"=out,"sv2"=sv2)}
 
 boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025,type="UB",altParam=0,method.rr="OP",unCond=0)   {
   if (type=="UB") min.r    <- EST+0.001
@@ -1307,15 +1322,20 @@ boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025,type="UB"
   if (type=="LB") last.r   <- min.r
   poss.r  <- seq(start.r,last.r,by=ifelse(type=="LB",-1,1)*0.01)
   poss.d  <- matrix(NA,ncol=1,nrow=length(poss.r))
+  sv      <- NA
   for (i in 1:length(poss.r)) {
-    aaa=try(poss.d[i] <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond),silent=TRUE)
-    if (i > 1) if ((poss.d[i] > poss.d[i-1] & poss.d[i] < 1) | is.na(poss.d[i]) | class(aaa) == "try-error") break
+    aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv),silent=TRUE)
+    if (class(aaa) != "try-error") poss.d[i] <- out2$out
+    if (class(aaa) != "try-error") sv        <- out2$sv2
+    if (i > 2) if ((poss.d[i] > poss.d[i-1] & poss.d[i] < 1) | is.na(poss.d[i]) | class(aaa) == "try-error") break
   }
   reachMax <- ifelse(i==length(poss.r),1,0)
-  poss.r   <- seq(poss.r[i-1],poss.r[i],by=ifelse(type=="LB",-1,1)*0.001)
+  poss.r   <- seq(poss.r[i-2],poss.r[i],by=ifelse(type=="LB",-1,1)*0.001)
   poss.d   <- matrix(ncol=1,nrow=length(poss.r))
   for (i in 1:length(poss.r)) {
-    aaa=try(poss.d[i] <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond),silent=TRUE)
+    aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv),silent=TRUE)
+    if (class(aaa) != "try-error") poss.d[i] <- out2$out
+    if (class(aaa) != "try-error") sv        <- out2$sv2
     if (i > 1) if (poss.d[i] > poss.d[i-1] | is.na(poss.d[i]) | class(aaa) == "try-error") break
   }
   out <- ifelse(reachMax==1 | poss.d[i-1] > 0.1,NA,poss.r[i])
@@ -1369,6 +1389,5 @@ boundR.LRT <- function(init.r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA
 
   poss.r[i]
 }
-
 
 

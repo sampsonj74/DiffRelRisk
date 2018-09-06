@@ -20,7 +20,7 @@ document()
 
 ##library("DRR")
 ##?DRR.CI
-install_github("sampsonj74/DRR")
+install_github("sampsonj74/DiffRelRisk")
 library("DiffRelRisk")
 DRRCI(x1=20,x2=50,x3=100,n1=1000,n2=1000,n3=1000)
 

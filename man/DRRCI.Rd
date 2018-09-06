@@ -6,7 +6,7 @@
 \usage{
 DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
   n3 = NA, n4 = NA, tr = NA, Y = NA, Z = NA, alpha = 0.05,
-  altParam = 0, refPop = NA, LRT = 0, unCond = 0)
+  altParam = 0, refPop = NA, LRT = 0)
 }
 \arguments{
 \item{x1}{The number of events in the first group  (either a single number if there is one strata or a vector if there are multiple strata)}
@@ -33,11 +33,11 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 
 \item{alpha}{The two-sided error rate for the confidence interval (i.e. 0.05 for a 95\% confidence interval)}
 
-\item{altParam}{A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata)}
+\item{altParam}{A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata; 0 for strata-specific values and 1 for a value)}
 
 \item{refPop}{The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)}
 
-\item{method.rr}{The method used for calculating the confidence interval (options are "OP" - one control group; "TP" - two control groups; "CO" - covariate adjustment)}
+\item{LRT}{A binary variable indivicating whether likelihood-based confidence interval should be use (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)}
 }
 \value{
 EST The estimated difference in relative risks
@@ -46,7 +46,7 @@ LB The lower bound for the difference
 
 UB The upper bound for the difference
 
-beta The MLE (and asymptotic SE) for the coefficients for individual level covariates (when method.rr=CO)
+beta The MLE (and asymptotic SE) for the coefficients for individual level covariates (when adjusting for covariates)
 }
 \description{
 This function estimates and provides a confidence interval for the difference between
@@ -65,12 +65,12 @@ DRRCI(x1=c(15,5),x2=c(30,20),x3=c(50,50),n1=c(600,400),n2=c(400,600),n3=c(500,50
 #here I could use altParam = 1 if I wanted to use the alternative parameterization
 #here I could use refPop   = "All" (or the other options) if I wanted to use direct standardization
 ##
-DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90,method.rr="TP")
-#I now have a separate "control" group for each treatment group; currently, need to set method.rr="TP"
+DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90)
+#I now have a separate "control" group for each treatment group
 ##
 tr = rep(c(0,1,2),each=100)
 Y  = c(rep(1,30),rep(0,70),rep(1,10),rep(0,90),rep(1,20),rep(0,80))
 Z  = cbind(1,rnorm(300),rnorm(300))
-DRRCI(tr=tr,Y=Y,Z=Z,method.rr="CO")
-#I now adjust for covariates; currently, need to set method.rr="CO" and let the first column of Z be a vector of 1's
+DRRCI(tr=tr,Y=Y,Z=Z)
+#I now adjust for covariates
 }
