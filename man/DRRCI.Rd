@@ -37,7 +37,7 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 
 \item{refPop}{The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)}
 
-\item{LRT}{A binary variable indivicating whether likelihood-based confidence interval should be use (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)}
+\item{LRT}{A binary variable indicating whether a likelihood-based confidence interval should be used (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)}
 }
 \value{
 EST The estimated difference in relative risks

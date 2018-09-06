@@ -18,7 +18,7 @@
 #' @param alpha The two-sided error rate for the confidence interval (i.e. 0.05 for a 95\% confidence interval)
 #' @param altParam A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata; 0 for strata-specific values and 1 for a value)
 #' @param refPop The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)
-#' @param LRT A binary variable indivicating whether likelihood-based confidence interval should be use (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)
+#' @param LRT A binary variable indicating whether a likelihood-based confidence interval should be used (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)
 #' @param tr The treatment group for each subject (a vector with one value per subject; values are either 0, 1, or 2; only required if want to adjust for covariates)
 #' @param Y The outcome for each subject (a vector with one value per subject; values are either 0 or 1; only required if want to adjust for covariates)
 #' @param Z The covariates for each subject (a matrix with one value per subject and one column per covariate; only required if want to adjust for covariates)
