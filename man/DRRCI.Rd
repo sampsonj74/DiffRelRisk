@@ -6,7 +6,7 @@
 \usage{
 DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
   n3 = NA, n4 = NA, tr = NA, Y = NA, Z = NA, alpha = 0.05,
-  altParam = 0, refPop = NA, LRT = 0)
+  altParam = 0, deltaMethod = 0, refPop = NA, LRT = 0, estRR = 0)
 }
 \arguments{
 \item{x1}{The number of events in the first group  (either a single number if there is one strata or a vector if there are multiple strata)}
@@ -15,7 +15,7 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 
 \item{x3}{The number of events in the third group (either a single number if there is one strata or a vector if there are multiple strata)}
 
-\item{x4}{The number of events in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata)}
+\item{x4}{The number of events in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata; note: not all options are currently available when there are four groups)}
 
 \item{n1}{The total number of subjects in the first group  (either a single number if there is one strata or a vector if there are multiple strata)}
 
@@ -23,7 +23,7 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 
 \item{n3}{The total number of subjects in the third group (either a single number if there is one strata or a vector if there are multiple strata)}
 
-\item{n4}{The total number of subjects in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata)}
+\item{n4}{The total number of subjects in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata; note: not all options are currently available when there are four groups)}
 
 \item{tr}{The treatment group for each subject (a vector with one value per subject; values are either 0, 1, or 2; only required if want to adjust for covariates)}
 
@@ -33,11 +33,15 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 
 \item{alpha}{The two-sided error rate for the confidence interval (i.e. 0.05 for a 95\% confidence interval)}
 
-\item{altParam}{A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata; 0 for strata-specific values and 1 for a value)}
+\item{altParam}{A binary variable indicating whether to use the full likelihood (altParam=0) or assume the log-linear model holds true (altParam==1) (Note: altParam=1 is equivalent to entering subject Y, tr, Z w/ Z set to binary indicators for strata)}
 
-\item{refPop}{The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)}
+\item{deltaMethod}{A binary variable indicating whether the delta method should be used (note: if deltaMethod==1, then default refPop="All")}
+
+\item{refPop}{The target population when standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; "Opt" -- an optimally chosen population; "Ind" -- indirect standardization for the delta method)}
 
 \item{LRT}{A binary variable indicating whether a likelihood-based confidence interval should be used (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)}
+
+\item{estRR}{A binary variable indicating whether to calculate the confidence intervals for each relative risk, as opposed to the difference (set to 0 for calculating the CI for difference, 1 for calculating the CIs for RR; note only works when data is entered as Z, Y, tr)}
 }
 \value{
 EST The estimated difference in relative risks
@@ -61,9 +65,9 @@ DRRCI(x1=20,x2=50,x3=100,n1=1000,n2=1000,n3=1000)
 #want to estimate (50/1000 - 20/1000)/(100/1000)
 ##
 DRRCI(x1=c(15,5),x2=c(30,20),x3=c(50,50),n1=c(600,400),n2=c(400,600),n3=c(500,500))
-#I know have observed individuals in two strata
-#here I could use altParam = 1 if I wanted to use the alternative parameterization
-#here I could use refPop   = "All" (or the other options) if I wanted to use direct standardization
+#I now have observed individuals in two strata
+#here I could use altParam = 1 if I wanted to assume that log-linear model held
+#here I could use refPop   = "All" if I wanted to use direct standardization
 ##
 DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90)
 #I now have a separate "control" group for each treatment group

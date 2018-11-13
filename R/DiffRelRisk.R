@@ -10,14 +10,16 @@
 #' @param x1 The number of events in the first group  (either a single number if there is one strata or a vector if there are multiple strata)
 #' @param x2 The number of events in the second group (either a single number if there is one strata or a vector if there are multiple strata)
 #' @param x3 The number of events in the third group (either a single number if there is one strata or a vector if there are multiple strata)
-#' @param x4 The number of events in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata)
+#' @param x4 The number of events in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata; note: not all options are currently available when there are four groups)
 #' @param n1 The total number of subjects in the first group  (either a single number if there is one strata or a vector if there are multiple strata)
 #' @param n2 The total number of subjects in the second group (either a single number if there is one strata or a vector if there are multiple strata)
 #' @param n3 The total number of subjects in the third group (either a single number if there is one strata or a vector if there are multiple strata)
-#' @param n4 The total number of subjects in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata)
+#' @param n4 The total number of subjects in the fourth group if the study included four groups (either missing if a three-group study, a single number if there is one strata or a vector if there are multiple strata; note: not all options are currently available when there are four groups)
 #' @param alpha The two-sided error rate for the confidence interval (i.e. 0.05 for a 95\% confidence interval)
-#' @param altParam A binary variable indicating whether a common value of (p1+p2)/p0 should be used when there are multiple strata (only informative when there are three groups and multiple strata; 0 for strata-specific values and 1 for a value)
-#' @param refPop The target population when direct standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; only informative when there are three groups and multiple strata, "Opt" -- an optimally chosen population)
+#' @param altParam A binary variable indicating whether to use the full likelihood (altParam=0) or assume the log-linear model holds true (altParam==1) (Note: altParam=1 is equivalent to entering subject Y, tr, Z w/ Z set to binary indicators for strata)
+#' @param deltaMethod A binary variable indicating whether the delta method should be used (note: if deltaMethod==1, then default refPop="All")
+#' @param refPop The target population when standardization is used (options are "All" -- all subjects, "Treat" -- treated population, "Cont" -- control population; "Opt" -- an optimally chosen population; "Ind" -- indirect standardization for the delta method)
+#' @param estRR  A binary variable indicating whether to calculate the confidence intervals for each relative risk, as opposed to the difference (set to 0 for calculating the CI for difference, 1 for calculating the CIs for RR; note only works when data is entered as Z, Y, tr)
 #' @param LRT A binary variable indicating whether a likelihood-based confidence interval should be used (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)
 #' @param tr The treatment group for each subject (a vector with one value per subject; values are either 0, 1, or 2; only required if want to adjust for covariates)
 #' @param Y The outcome for each subject (a vector with one value per subject; values are either 0 or 1; only required if want to adjust for covariates)
@@ -31,9 +33,9 @@
 #' @examples #want to estimate (50/1000 - 20/1000)/(100/1000)
 #' @examples ##
 #' @examples DRRCI(x1=c(15,5),x2=c(30,20),x3=c(50,50),n1=c(600,400),n2=c(400,600),n3=c(500,500))
-#' @examples #I know have observed individuals in two strata
-#' @examples #here I could use altParam = 1 if I wanted to use the alternative parameterization
-#' @examples #here I could use refPop   = "All" (or the other options) if I wanted to use direct standardization
+#' @examples #I now have observed individuals in two strata
+#' @examples #here I could use altParam = 1 if I wanted to assume that log-linear model held
+#' @examples #here I could use refPop   = "All" if I wanted to use direct standardization
 #' @examples ##
 #' @examples DRRCI(x1=20,x2=50,x3=100,x4=90,n1=1000,n2=1000,n3=1000,n4=90)
 #' @examples #I now have a separate "control" group for each treatment group
@@ -46,45 +48,256 @@
 #' @export
 #'
 
-DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,refPop=NA,LRT=0){
+DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0){
+  if (estRR == 0) out <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
+  if (estRR == 1 & is.na(x1[1])) {out1 <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
+  out2 <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=ifelse(tr==1,2,ifelse(tr==2,1,0)),Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
+  out <- list("EST"=matrix(c(out1$EST,out2$EST),nrow=1),"LB"=matrix(c(out1$LB,out2$LB),nrow=1),"UB"=matrix(c(out1$UB,out2$UB),nrow=1),"beta"=out1$beta)
+  colnames(out$EST)=colnames(out$LB)=colnames(out$UB)=c("Treatment 1","Treatment 2")}
+  if (estRR == 1 & !is.na(x1[1])) print("ERROR: DRRCI can only estimate RR when data is entered as Y, Z, and tr")
+  out
+}
 
+
+
+
+DRRCI2 <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0){
+
+
+  if (!is.na(x1[1]) & is.na(refPop) & LRT==0 & altParam==0 & length(x1)>1){
+    x1a=x1
+    x2a=x2
+    r.simp <- (sum(x2)/sum(n2) - sum(x1)/sum(n1))/(sum(x3)/sum(n3))
+    p1.simp <- sum(x1)/sum(n1)
+    p2.simp <- sum(x2)/sum(n2)
+    if(p1.simp==0) p1.simp= 0.001/sum(n1)
+    if(p2.simp==0) p2.simp= 0.001/sum(n2)
+    n1 <- ifelse(x1a==0 | x2a==0,n1+0.01/p1.simp,n1)
+    n2 <- ifelse(x1a==0 | x2a==0,n2+0.01/p2.simp,n2)
+    x1 <- ifelse(x1a==0 | x2a==0,x1+0.01,x1)
+    x2 <- ifelse(x1a==0 | x2a==0,x2+0.01,x2)
+
+  }
+
+
+
+  ####IDENTIFY METHOD
   unCond=0
   method.rr <- "OP"
-  if (!is.na(x4[1])) method.rr = "TP"
-  if (length(Y)>1)   method.rr = "CO"
+  if (!is.na(x4[1]))            method.rr = "TP"
+  if (length(Y)>1 & estRR==0)   method.rr = "CO"
+  if (length(Y)>1 & estRR==1)   method.rr = "COR"
 
+  ####NECESSARY WARNINGS
   if (!is.na(x1[1])  & length(Y) > 1 ) print("WARNING: You should not provide BOTH a 2x3 table AND disease/treatment/covariates")
   if (!is.na(refPop) & length(Y) > 1 ) print("WARNING: You should not provide BOTH a reference population table AND disease/treatment/covariates")
-  if (length(Y) > 1) {if (length(Z)==length(Y) & sum(Z==1)     != length(Y)) Z <-  cbind(1,Z)
-  if (length(Z)!=length(Y) & sum(Z[,1]==1) != length(Y)) Z <-  cbind(1,Z)
-  if (is.null(colnames(Z))) colnames(Z) <- paste0("Z",c(1:ncol(Z))-1)
-  colnames(Z)[1]="Int"}
+  if (deltaMethod==1 & length(Y) > 1 ) print("WARNING: You should not ask for the delta method AND provide disease/treatment/covariates")
+  if (deltaMethod==0){
 
-  init.pa=init.p3=init.p4=init.t=init.tp=init.k=init.b=NA
+    init.r <- init.R1 <- NA
+    ###Initial values for r
+    if (method.rr=="OP") init.r   <-  startR.OP(x1,x2,x3,n1,n2,n3)
+    if (method.rr=="TP") init.r   <-  startR.TP(x1,x2,x3,x4,n1,n2,n3,n4)
+    if (method.rr=="CO") init.r   <-  startR.CO(tr,Z,Y)
+    if (method.rr=="COR")init.R1  <-  startR.COR(tr,Z,Y)
 
-  if (method.rr != "CO"){
-    if (sum(!is.na(n4))==0) n4 <- rep(0,length(x1))
-    if (sum(!is.na(x4))==0) x4 <- rep(0,length(x1))
 
-    badStrata1 <- c(1:length(n1))[ifelse(n1==0 | n2==0 | n3==0 | (n4==0 & sum(n4)>0),1,0)==1]
-    badStrata2 <- c(1:length(n1))[x3==0]
-    if (altParam==0) badStrata <- sort(unique(c(badStrata1,badStrata2)))
-    if (altParam==1) badStrata <- badStrata1
-    if (length(badStrata) > 0){
-      x1 <- x1[-badStrata]
-      x2 <- x2[-badStrata]
-      x3 <- x3[-badStrata]
-      x4 <- x4[-badStrata]
-      n1 <- n1[-badStrata]
-      n2 <- n2[-badStrata]
-      n3 <- n3[-badStrata]
-      n4 <- n4[-badStrata]
+    ####Add intercept to Z if necessary
+    if (length(Y) > 1) {if (length(Z)==length(Y) & sum(Z==1)     != length(Y)) Z <-  cbind(1,Z)
+    if (length(Z)!=length(Y) & sum(Z[,1]==1) != length(Y)) Z <-  cbind(1,Z)
+    if (is.null(colnames(Z))) colnames(Z) <- paste0("Z",c(1:ncol(Z))-1)
+    colnames(Z)[1]="Int"}
+
+    init.pa=init.p3=init.p4=init.t=init.tp=init.k=init.b=init.R2=NA
+
+    if (method.rr != "CO" & method.rr != "COR"){
+
+      ####Create x4 and n4 when needed
+      if (sum(!is.na(n4))==0) n4 <- rep(0,length(x1))
+      if (sum(!is.na(x4))==0) x4 <- rep(0,length(x1))
+
+      ####Remove bad strata
+      ###no individuals in one of the groups
+      badStrata1 <- c(1:length(n1))[ifelse(n1==0 | n2==0 | n3==0 | (n4==0 & sum(n4)>0),1,0)==1]
+      ###no events in the control group
+      badStrata2 <- c(1:length(n1))[x3==0]
+      if (altParam==0) badStrata <- sort(unique(c(badStrata1,badStrata2)))
+      if (altParam==1) badStrata <- badStrata1
+      if (length(badStrata) > 0){
+        x1 <- x1[-badStrata]
+        x2 <- x2[-badStrata]
+        x3 <- x3[-badStrata]
+        x4 <- x4[-badStrata]
+        n1 <- n1[-badStrata]
+        n2 <- n2[-badStrata]
+        n3 <- n3[-badStrata]
+        n4 <- n4[-badStrata]
+      }
+
+      ####Identify reference group if needed
+      if (refPop=="All"      & !is.na(refPop))     nR <- n1+n2+n3+n4
+      if (refPop=="Treat"    & !is.na(refPop))     nR <- n1+n2
+      if (refPop=="Cont"     & !is.na(refPop))     nR <- n3+n4
+      if (refPop=="Opt"      & !is.na(refPop) & method.rr=="OP")   {
+        p1.hat  <- sum(x1)/sum(n1)
+        p2.hat  <- sum(x2)/sum(n2)
+        p3.hat  <- sum(x3)/sum(n3)
+        pa.hat  <- (p1.hat+p2.hat)/2
+        pie.num <- (pa.hat*(1/n1 + 1/n2) + (0.01+(p1.hat-p2.hat)^2)/(n3*p3.hat))^(-1)
+        pie     <- pie.num/sum(pie.num)
+        nR      <- pie*sum(n1+n2+n3) }
+      if (refPop=="Opt"      & !is.na(refPop) & method.rr=="TP")   {
+        print("WARNING: The option refPop=Opt does not work for method.rr=TP; Defaults to refPop=All")
+        nR <- n1+n2+n3+n4}
+
+
+      ###Recalibrates x's and n's to reference group if needed
+      if (!is.na(refPop)){
+        snR <- sum(nR)
+        E1 <- sum((nR/n1)*x1)
+        E2 <- sum((nR/n2)*x2)
+        E3 <- sum((nR/n3)*x3)
+        E4 <- sum((nR/n4)*x4)
+        n1 <- (snR^2)/sum(nR^2/n1)
+        n2 <- (snR^2)/sum(nR^2/n2)
+        n3 <- (snR^2)/sum(nR^2/n3)
+        n4 <- (snR^2)/sum(nR^2/n4)
+        x1 <- n1*E1/snR
+        x2 <- n2*E2/snR
+        x3 <- n3*E3/snR
+        x4 <- n4*E4/snR
+      }
+
+      ###number of strata
+      s <- length(x1)
+      #goodStrata <- c(1:s)[(x1+x2+x3+x4>0) & (x1+x2 > 0 | altParam==1 | method.rr!="OP")]
+      goodStrata <- c(1:s)[(x1+x2+x3+x4>0)]
+      if (length(goodStrata) < s & s > 1) print("WARNING: Dropping strata without any events (or events in treatment)")
+
+      if (s > 1 & length(goodStrata) > 1) {x1 <- x1[goodStrata]
+      x2 <- x2[goodStrata]
+      x3 <- x3[goodStrata]
+      x4 <- x4[goodStrata]
+      n1 <- n1[goodStrata]
+      n2 <- n2[goodStrata]
+      n3 <- n3[goodStrata]
+      n4 <- n4[goodStrata]}
+      s <- length(x1)
+
+
+      N       <- n1+n2+n3+n4
+      init.p3 <-  x3/n3
+      init.p3 <- ifelse(init.p3 < 0.000001,0.000001,ifelse(init.p3 > 0.9999,0.9999,init.p3))
+      init.p4 <-  x4/n4
+      init.tp <-  (x1/n1)/(x3/n3)+(x2/n2)/(x4/n4)
+      init.pa <- (x1/n1+x2/n2)/2
+      init.pa <- ifelse(init.pa < 0.000001,0.000001,ifelse(init.pa > 0.9999,0.9999,init.pa))
+      init.pa <- ifelse(init.pa < init.r*init.p3/2+0.000001,init.r*init.p3/2+0.000001,init.pa)
+      init.pa <- ifelse(init.pa < -init.r*init.p3/2+0.000001,-init.r*init.p3/2+0.000001,init.pa)
+
+      init.t  <- sum(N*init.pa)/sum(N*init.p3)
+      tr <- Y <- Z <- NA
     }
 
-    if (refPop=="All"      & !is.na(refPop))     nR <- n1+n2+n3+n4
+    if (substr(method.rr,1,2) == "CO"){
+      ncz    <- ncol(Z)
+      badCol <- rep(0,ncz)
+      for (i in 2:ncz) if (sum(Y[abs(Z[,i]) > 0])==0) badCol[i] <- 1
+      Z <- Z[,badCol==0]
+      init.b2 <- log(mean(Y[tr==0],na.rm=T))
+      init.b  <- c(ifelse(is.na(init.b2) | init.b2 < -15, -15,init.b2),rep(0,ncol(Z)-1))
+      init.k  <- mean(Y[tr!=0],na.rm=T)/exp(init.b[1])
+      if (method.rr == "CO") init.k  <- ifelse(init.k-init.r/2 < 0.000001, init.r/2 + 0.000001, init.k )
+      init.R2 <- mean(Y[tr==2],na.rm=T)/mean(Y[tr==0],na.rm=T)
+      x1 <- x2 <- x3 <- x4 <- n1 <- n2 <- n3 <- n4 <- NA
+    }
+
+
+
+    EST <- LB <- UB <- NA
+    if ( (sum(x3)>=2 & (sum(x4)>=2 | sum(n4)==0)) | substr(method.rr,1,2) == "CO" ){
+      if (method.rr=="OP") EST <- getEst.OP(init.pa,init.t,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam,unCond)
+      if (method.rr=="TP") EST <- getEst.TP(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4)
+      if (method.rr=="CO") EST <- getEst.CO(init.k,init.b,init.r,Y,Z,tr)
+      if (method.rr=="COR")EST <- getEst.COR(init.R2,init.b,init.R1,Y,Z,tr)
+    }
+
+    if ( (sum(x3)==0 | (sum(x4)==0 & sum(n4)>0)) &  substr(method.rr,1,2) != "CO")  EST     <- 0
+    if (!is.na(EST) & LRT==0) LB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="LB",altParam=altParam,method.rr=method.rr,unCond=unCond)
+    if (!is.na(EST) & LRT==0) UB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="UB",altParam=altParam,method.rr=method.rr,unCond=unCond)
+    if (!is.na(EST) & LRT==1) try(LB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,init.R1,init.R2,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="LB"))
+    if (!is.na(EST) & LRT==1) try(UB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,init.R1,init.R2,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="UB"))
+
+    beta               <- NA
+    if (substr(method.rr,1,2) == "CO"){
+      cname              <- colnames(Z)
+      if (length(cname)==0) cname <- rep("--",ncol(Z))
+      bestEst            <- NA
+      if (method.rr == "CO")  try(bestEst           <- getEst.CO( init.k,init.b,init.r,Y,Z,tr,allRes=1))
+      if (method.rr == "COR") try(bestEst           <- getEst.COR(init.R2,init.b,init.R1,Y,Z,tr,allRes=1))
+      if (length(bestEst) > 1){
+        lbe               <- length(bestEst)
+        if (method.rr == "CO")  III               <- fI.CO(bestEst[lbe], bestEst[1],bestEst[-c(1,lbe)],tr,length(Y),Z)
+        if (method.rr == "COR") III               <- fI.COR(bestEst[lbe],bestEst[1],bestEst[-c(1,lbe)],tr,length(Y),Z)
+        SE                <- rep(NA,lbe)
+        try(SE            <- sqrt(diag(solve(III)))[-c(1,lbe)])
+        betas             <- bestEst[-c(1,lbe)]
+        beta              <- data.frame("name"=cname,"betas"=betas,"SE"=SE)
+        colnames(beta)    <- c("","Beta","SE")
+      }
+    }
+
+    out <- list("EST"=EST,"LB"=LB,"UB"=UB,"beta"=beta)
+
+    ####end if deltaMethod==0
+  }
+
+
+  if (deltaMethod==1) out <- deltaMethodF(x1=x1,x2=x2,x3=x3,n1=n1,n2=n2,n3=n3,alpha=alpha,refPop=refPop)
+
+  out
+
+}
+
+
+####################################################################################################################
+#####
+#####Delta Method
+#####
+####################################################################################################################
+
+
+
+deltaMethodF <- function(x1=NA,x2=NA,x3=NA,n1=NA,n2=NA,n3=NA,alpha=0.05,refPop=NA){
+
+
+  beta <- NA
+  za   <- qnorm(1-alpha/2)
+
+  if (length(x1)==1){
+    p1.hat <- x1/n1
+    p2.hat <- x2/n2
+    p3.hat <- x3/n3
+
+    s1.hat <- p1.hat*(1-p1.hat)/n1
+    s2.hat <- p2.hat*(1-p2.hat)/n2
+    s3.hat <- p3.hat*(1-p3.hat)/n3
+
+
+    EST  <- c((p2.hat-p1.hat)/p3.hat)
+    SE   <- sqrt(s1.hat/p3.hat^2 + s2.hat/p3.hat^2 + (p2.hat-p1.hat)^2*s3.hat/p3.hat^4)
+    LB   <- c(EST-za*SE)
+    UB   <- c(EST+za*SE)
+  }
+
+
+  if (length(x1)>1 & (refPop != "Ind" | is.na(refPop)) ){
+
+    if (is.na(refPop)) refPop <- "All"
+    if (refPop=="All"      & !is.na(refPop))     nR <- n1+n2+n3
     if (refPop=="Treat"    & !is.na(refPop))     nR <- n1+n2
-    if (refPop=="Cont"     & !is.na(refPop))     nR <- n3+n4
-    if (refPop=="Opt"      & !is.na(refPop) & method.rr=="OP")   {
+    if (refPop=="Cont"     & !is.na(refPop))     nR <- n3
+    if (refPop=="Opt"      & !is.na(refPop))   {
       p1.hat  <- sum(x1)/sum(n1)
       p2.hat  <- sum(x2)/sum(n2)
       p3.hat  <- sum(x3)/sum(n3)
@@ -93,98 +306,53 @@ DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=N
       pie     <- pie.num/sum(pie.num)
       nR      <- pie*sum(n1+n2+n3) }
 
+    p1.hat <- x1/n1
+    p2.hat <- x2/n2
+    p3.hat <- x3/n3
 
-    if (refPop=="Opt"      & !is.na(refPop) & method.rr=="TP")   {
-      print("WARNING: The option refPop=Opt does not work for method.rr=TP; Defaults to refPop=All")
-      nR <- n1+n2+n3+n4}
-
-
-
-    if (!is.na(refPop)){
-      snR <- sum(nR)
-      E1 <- sum((nR/n1)*x1)
-      E2 <- sum((nR/n2)*x2)
-      E3 <- sum((nR/n3)*x3)
-      E4 <- sum((nR/n4)*x4)
-      n1 <- (snR^2)/sum(nR^2/n1)
-      n2 <- (snR^2)/sum(nR^2/n2)
-      n3 <- (snR^2)/sum(nR^2/n3)
-      n4 <- (snR^2)/sum(nR^2/n4)
-      x1 <- n1*E1/snR
-      x2 <- n2*E2/snR
-      x3 <- n3*E3/snR
-      x4 <- n4*E4/snR
-    }
-
-    s <- length(x1)
-    goodStrata <- c(1:s)[(x1+x2+x3+x4>0) & (x1+x2 > 0 | altParam==1 | method.rr!="OP")]
-    if (length(goodStrata) < s) print("WARNING: Dropping strata without any events (or events in treatment)")
-
-    if (s > 1 & length(goodStrata) > 1) {x1 <- x1[goodStrata]
-    x2 <- x2[goodStrata]
-    x3 <- x3[goodStrata]
-    x4 <- x4[goodStrata]
-    n1 <- n1[goodStrata]
-    n2 <- n2[goodStrata]
-    n3 <- n3[goodStrata]
-    n4 <- n4[goodStrata]}
-    s <- length(x1)
+    pie.m <- nR/sum(nR)
+    p.star.1 <- sum(pie.m*p1.hat)
+    p.star.2 <- sum(pie.m*p2.hat)
+    p.star.3 <- sum(pie.m*p3.hat)
 
 
+    s1.hat <- sum(pie.m^2*p1.hat*(1-p1.hat)/n1)
+    s2.hat <- sum(pie.m^2*p2.hat*(1-p2.hat)/n2)
+    s3.hat <- sum(pie.m^2*p3.hat*(1-p3.hat)/n3)
 
-
-    N       <- n1+n2+n3+n4
-    init.pa <- (x1/n1+x2/n2)/2
-    init.pa <- ifelse(init.pa < 0.0001,0.0001,ifelse(init.pa > 0.9999,0.9999,init.pa))
-    init.p3 <-  x3/n3
-    init.p3 <- ifelse(init.p3 < 0.0001,0.0001,ifelse(init.p3 > 0.9999,0.9999,init.p3))
-    init.p4 <-  x4/n4
-    init.tp <-  (x1/n1)/(x3/n3)+(x2/n2)/(x4/n4)
-    init.t  <- sum(N*init.pa)/sum(N*init.p3)
-    tr <- Y <- Z <- NA
+    EST <- (p.star.2-p.star.1)/p.star.3
+    SE   <- sqrt(s1.hat/p.star.3^2 + s2.hat/p.star.3^2 + s3.hat*(p.star.2-p.star.1)^2/p.star.3^4)
+    LB   <- c(EST-za*SE)
+    UB   <- c(EST+za*SE)
   }
 
-  if (method.rr == "CO"){
-    init.b2 <- log(mean(Y[tr==0],na.rm=T))
-    init.b  <- c(ifelse(is.na(init.b2) | init.b2 < -10, -10,init.b2),rep(0,ncol(Z)-1))
-    init.k  <- mean(Y[tr!=0],na.rm=T)/exp(init.b[1])
-    x1 <- x2 <- x3 <- x4 <- n1 <- n2 <- n3 <- n4 <- NA
-  }
-  if (method.rr=="OP") init.r  <-  startR.OP(x1,x2,x3,n1,n2,n3)
-  if (method.rr=="TP") init.r  <-  startR.TP(x1,x2,x3,x4,n1,n2,n3,n4)
-  if (method.rr=="CO") init.r  <-  startR.CO(tr,Z,Y)
 
-  EST <- LB <- UB <- NA
-  if ( (sum(x3)>=2 & (sum(x4)>=2 | sum(n4)==0)) | method.rr == "CO" ){
-    if (method.rr=="OP") EST <- getEst.OP(init.pa,init.t,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam,unCond)
-    if (method.rr=="TP") EST <- getEst.TP(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4)
-    if (method.rr=="CO") EST <- getEst.CO(init.k,init.b,init.r,Y,Z,tr)
-  }
-  if ( (sum(x3)==0 | (sum(x4)==0 & sum(n4)>0)) &  method.rr != "CO")  EST     <- 0
-  if (!is.na(EST) & LRT==0) LB <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="LB",altParam=altParam,method.rr=method.rr,unCond=unCond)
-  if (!is.na(EST) & LRT==0) UB <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="UB",altParam=altParam,method.rr=method.rr,unCond=unCond)
-  if (!is.na(EST) & LRT==1) try(LB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="LB"))
-  if (!is.na(EST) & LRT==1) try(UB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="UB"))
+  if (length(x1)>1 & refPop == "Ind"){
 
-  beta               <- NA
-  if (method.rr == "CO"){
-    cname              <- colnames(Z)
-    if (length(cname)==0) cname <- rep("--",ncol(Z))
-    bestEst            <- NA
-    try(bestEst           <- getEst.CO(init.k,init.b,init.r,Y,Z,tr,allRes=1))
-    if (length(bestEst) > 1){
-      lbe               <- length(bestEst)
-      III               <- fI.CO(bestEst[lbe],bestEst[1],bestEst[-c(1,lbe)],tr,length(Y),Z)
-      SE                <- rep(NA,lbe)
-      try(SE            <- sqrt(diag(solve(III)))[-c(1,lbe)])
-      betas             <- bestEst[-c(1,lbe)]
-      beta              <- data.frame("name"=cname,"betas"=betas,"SE"=SE)
-      colnames(beta)    <- c("","Beta","SE")
-    }
+
+    p1.hat <- x1/n1
+    p2.hat <- x2/n2
+    p3.hat <- x3/n3
+    x01.t <- sum(n1*p3.hat)
+    x02.t <- sum(n2*p3.hat)
+
+    s1.hat <- sum(p1.hat*(1-p1.hat)/n1)
+    s2.hat <- sum(p2.hat*(1-p2.hat)/n2)
+
+    s01.hat  <- sum(n1^2*p3.hat*(1-p3.hat)/n3)
+    s02.hat  <- sum(n2^2*p3.hat*(1-p3.hat)/n3)
+    s012.hat <- sum(n2*n1*p3.hat*(1-p3.hat)/n3)
+
+    EST <- sum(x2)/sum(x02.t) - sum(x1)/sum(x01.t)
+    SE   <- sqrt(s1.hat/x01.t^2 + s2.hat/x02.t^2 + sum(x1)^2*s01.hat/x01.t^4 + sum(x2)^2*s02.hat/x02.t^4 + sum(x2)*sum(x1)*s012.hat/(x01.t^2*x02.t^2))
+    LB   <- c(EST-za*SE)
+    UB   <- c(EST+za*SE)
   }
 
   list("EST"=EST,"LB"=LB,"UB"=UB,"beta"=beta)
 }
+
+
 
 
 ####################################################################################################################
@@ -309,9 +477,9 @@ fL.OP         <- function(t=NA,pa=NA,p3,r,x1,x2,x3,n1,n2,n3)   {
   if (sum(!is.na(t))>0)  p2   <- t*p3 + r*p3/2
   out  <- NA
   if (sum(p1>=0)==s & sum(p2>=0)==s & sum(p3>=0)==s &
-      sum(p1<=1)==s & sum(p2<=1)==s & sum(p3<=1)==s) {p3 <- ifelse(p3==0,0.000001,ifelse(p3==1,0.999999,p3))
-      p1 <- ifelse(p1==0,0.000001,ifelse(p1==1,0.999999,p1))
-      p2 <- ifelse(p2==0,0.000001,ifelse(p2==1,0.999999,p2))
+      sum(p1<=1)==s & sum(p2<=1)==s & sum(p3<=1)==s) {p3 <- ifelse(p3<0.000001,0.000001,ifelse(p3==1,0.999999,p3))
+      p1 <- ifelse(p1<0.000001,0.000001,ifelse(p1==1,0.999999,p1))
+      p2 <- ifelse(p2<0.000001,0.000001,ifelse(p2==1,0.999999,p2))
       out2 <- -(x3*log(p3)+(n3-x3)*log(1-p3)+
                   x1*log(p1)+(n1-x1)*log(1-p1)+
                   x2*log(p2)+(n2-x2)*log(1-p2))
@@ -329,10 +497,10 @@ fL.TP         <- function(t,r,p01,p02,x1,x2,x01,x02,n1,n2,n01,n02)   {
   p2 <- p02*(t+r)/2
   out  <- NA
   if (sum(p1>=0)==s & sum(p2>=0)==s & sum(p01>=0)==s & sum(p02>=0)==s &
-      sum(p1<=1)==s & sum(p2<=1)==s & sum(p01<=1)==s & sum(p02<=1)==s) {p01 <- ifelse(p01==0,0.000001,ifelse(p01==1,0.999999,p01))
-      p02 <- ifelse(p02==0,0.000001,ifelse(p02==1,0.999999,p02))
-      p1  <- ifelse(p1==0,0.000001,ifelse(p1==1,0.999999,p1))
-      p2  <- ifelse(p2==0,0.000001,ifelse(p2==1,0.999999,p2))
+      sum(p1<=1)==s & sum(p2<=1)==s & sum(p01<=1)==s & sum(p02<=1)==s) {p01 <- ifelse(p01<0.000001,0.000001,ifelse(p01==1,0.999999,p01))
+      p02 <- ifelse(p02<0.000001,0.000001,ifelse(p02==1,0.999999,p02))
+      p1  <- ifelse(p1<0.000001,0.000001,ifelse(p1==1,0.999999,p1))
+      p2  <- ifelse(p2<0.000001,0.000001,ifelse(p2==1,0.999999,p2))
       out2 <- -(x02*log(p02)+(n02-x02)*log(1-p02)+
                   x01*log(p01)+(n01-x01)*log(1-p01)+
                   x1*log(p1)+(n1-x1)*log(1-p1)+
@@ -346,10 +514,16 @@ fL.TP         <- function(t,r,p01,p02,x1,x2,x01,x02,n1,n2,n01,n02)   {
 
 fL.CO         <- function(r,k,b,Y,Z,tr){
   p    <- exp(Z%*%b)*ifelse(tr==1,k-r/2,ifelse(tr==2,k+r/2,1))
-  p    <- ifelse(p<=0,0.000001,ifelse(p>=1,0.999999,p))
+  p    <- ifelse(p<=0.000001,0.000001,ifelse(p>=1,0.999999,p))
   out  <- -sum(Y*log(p)+(1-Y)*log(1-p))
   out
 }
+
+
+###Individual-level Covarites focused on relative risk
+
+fL.COR        <- function(R1,R2,b,Y,Z,tr) fL.CO(r=(R2-R1),k=(R1+R2)/2,b,Y,Z,tr)
+
 
 
 
@@ -367,21 +541,24 @@ dL.OP1<- function(pa,p3,r,x1,x2,x3,n1,n2,n3)   {
   s   <- length(pa)
   p1=pa-r*p3/2
   p2=pa+r*p3/2
-  p1=ifelse(x1>0 & p1==0,0.0001,p1)
-  p2=ifelse(x2>0 & p2==0,0.0001,p2)
-  p3=ifelse(x3>0 & p3==0,0.0001,p3)
-  out.r  <- sum(-x1*(p3/2)/(p1) + (n1-x1)*(p3/2)/(1-p1) +
-                  x2*(p3/2)/(p2) - (n2-x2)*(p3/2)/(1-p2))
-  out.pa <-      x1[1]/p1[1] - (n1[1]-x1[1])/(1-p1[1])  +
-    x2[1]/p2[1] - (n2[1]-x2[1])/(1-p2[1])
-  out.p3 <-      x3[1]/p3[1] - (n3[1]-x3[1])/(1-p3[1])  -  x1[1]*(r/2)/(p1[1]) + (n1[1]-x1[1])*(r/2)/(1-p1[1]) +
-    x2[1]*(r/2)/(p2[1]) - (n2[1]-x2[1])*(r/2)/(1-p2[1])
+  p1=ifelse(x1>0 & p1<0.000001,0.000001,p1)
+  p2=ifelse(x2>0 & p2<0.000001,0.000001,p2)
+  p3=ifelse(x3>0 & p3<0.000001,0.000001,p3)
+  p1d <- ifelse(p1==0,1,p1)
+  p2d <- ifelse(p2==0,1,p2)
+  p3d <- ifelse(p3==0,1,p3)
+  out.r  <- sum(-x1*(p3/2)/(p1d) + (n1-x1)*(p3/2)/(1-p1) +
+                  x2*(p3/2)/(p2d) - (n2-x2)*(p3/2)/(1-p2))
+  out.pa <-      x1[1]/p1d[1] - (n1[1]-x1[1])/(1-p1[1])  +
+    x2[1]/p2d[1] - (n2[1]-x2[1])/(1-p2[1])
+  out.p3 <-      x3[1]/p3d[1] - (n3[1]-x3[1])/(1-p3[1])  -  x1[1]*(r/2)/(p1d[1]) + (n1[1]-x1[1])*(r/2)/(1-p1[1]) +
+    x2[1]*(r/2)/(p2d[1]) - (n2[1]-x2[1])*(r/2)/(1-p2[1])
   out    <- c(out.r,out.pa,out.p3)
   if (s > 1) for (i in 2:s) {
-    out.pa <-       x1[i]/p1[i] - (n1[i]-x1[i])/(1-p1[i])  +
-      x2[i]/p2[i] - (n2[i]-x2[i])/(1-p2[i])
-    out.p3 <-       x3[i]/p3[i] - (n3[i]-x3[i])/(1-p3[i])  -  x1[i]*(r/2)/(p1[i]) + (n1[i]-x1[i])*(r/2)/(1-p1[i]) +
-      x2[i]*(r/2)/(p2[i]) - (n2[i]-x2[i])*(r/2)/(1-p2[i])
+    out.pa <-       x1[i]/p1d[i] - (n1[i]-x1[i])/(1-p1[i])  +
+      x2[i]/p2d[i] - (n2[i]-x2[i])/(1-p2[i])
+    out.p3 <-       x3[i]/p3d[i] - (n3[i]-x3[i])/(1-p3[i])  -  x1[i]*(r/2)/(p1d[i]) + (n1[i]-x1[i])*(r/2)/(1-p1[i]) +
+      x2[i]*(r/2)/(p2d[i]) - (n2[i]-x2[i])*(r/2)/(1-p2[i])
     out    <- c(out,out.pa,out.p3)
 
   }
@@ -395,19 +572,22 @@ dL.OP2<- function(t,p3,r,x1,x2,x3,n1,n2,n3)   {
   s   <- length(p3)
   p1=(t*p3-r*p3/2)
   p2=(t*p3+r*p3/2)
-  p1=ifelse(x1>0 & p1==0,0.0001,p1)
-  p2=ifelse(x2>0 & p2==0,0.0001,p2)
-  p3=ifelse(x3>0 & p3==0,0.0001,p3)
-  out.r  <- sum(-x1*p3/(2*p1) + (n1-x1)*p3/(2*(1-p1)) +
-                  x2*p3/(2*p2) - (n2-x2)*p3/(2*(1-p2)) )
-  out.t <-  sum(x1*p3/p1 - (n1-x1)*p3/(1-p1) +
-                  x2*p3/p2 - (n2-x2)*p3/(1-p2) )
-  out.p3 <- x3[1]/p3[1] - (n3[1]-x3[1])/(1-p3[1]) + x1[1]*(t-r/2)/p1[1] - (n1[1]-x1[1])*(t-r/2)/(1-p1[1]) +
-    x2[1]*(t+r/2)/p2[1] - (n2[1]-x2[1])*(t+r/2)/(1-p2[1])
+  p1=ifelse(x1>0 & p1<0.000001,0.000001,p1)
+  p2=ifelse(x2>0 & p2<0.000001,0.000001,p2)
+  p3=ifelse(x3>0 & p3<0.000001,0.000001,p3)
+  p1d <- ifelse(p1==0,1,p1)
+  p2d <- ifelse(p2==0,1,p2)
+  p3d <- ifelse(p3==0,1,p3)
+  out.r  <- sum(-x1*p3/(2*p1d) + (n1-x1)*p3/(2*(1-p1)) +
+                  x2*p3/(2*p2d) - (n2-x2)*p3/(2*(1-p2)) )
+  out.t <-  sum(x1*p3/p1d - (n1-x1)*p3/(1-p1) +
+                  x2*p3/p2d - (n2-x2)*p3/(1-p2) )
+  out.p3 <- x3[1]/p3d[1] - (n3[1]-x3[1])/(1-p3[1]) + x1[1]*(t-r/2)/p1d[1] - (n1[1]-x1[1])*(t-r/2)/(1-p1[1]) +
+    x2[1]*(t+r/2)/p2d[1] - (n2[1]-x2[1])*(t+r/2)/(1-p2[1])
   out    <- c(out.r,out.t,out.p3)
   if (s > 1) for (i in 2:s) {
-    out.p3 <-  x3[i]/p3[i] - (n3[i]-x3[i])/(1-p3[i]) + x1[i]*(t-r/2)/p1[i] - (n1[i]-x1[i])*(t-r/2)/(1-p1[i]) +
-      x2[i]*(t+r/2)/p2[i] - (n2[i]-x2[i])*(t+r/2)/(1-p2[i])
+    out.p3 <-  x3[i]/p3d[i] - (n3[i]-x3[i])/(1-p3[i]) + x1[i]*(t-r/2)/p1d[i] - (n1[i]-x1[i])*(t-r/2)/(1-p1[i]) +
+      x2[i]*(t+r/2)/p2d[i] - (n2[i]-x2[i])*(t+r/2)/(1-p2[i])
     out    <- c(out,out.p3)
 
   }
@@ -422,10 +602,10 @@ dL.TP    <- function(r,t,p01,p02,x1,x2,x01,x02,n1,n2,n01,n02) {
   s <- length(p01)
   p1 <- p01*(t-r)/2
   p2 <- p02*(t+r)/2
-  p01=ifelse(x01>0 & p01==0,0.0001,p01)
-  p02=ifelse(x02>0 & p02==0,0.0001,p02)
-  p1=ifelse(x1>0 & p1==0,0.0001,p1)
-  p2=ifelse(x2>0 & p2==0,0.0001,p2)
+  p01=ifelse(x01>0 & p01<0.000001,0.000001,p01)
+  p02=ifelse(x02>0 & p02<0.000001,0.000001,p02)
+  p1=ifelse(x1>0 & p1<0.000001,0.000001,p1)
+  p2=ifelse(x2>0 & p2<0.000001,0.000001,p2)
   q1 <- 1-p1
   q2 <- 1-p2
   q01<- 1-p01
@@ -450,13 +630,34 @@ dL.CO    <- function(r,k,b,tr,n,Z,Y) {
   nc     <- length(b)
   ezb    <- exp(Z%*%b)
   p      <- ezb*ifelse(tr==1,k-r/2,ifelse(tr==2,k+r/2,1))
+  p      <- ifelse(p<0.000001,0.000001,p)
   q      <- 1-p
+  q      <- ifelse(q<0.000001,0.000001,q)
   out.r  <- sum((-Y/(2*(k-r/2)) + (1-Y)*ezb /(2*q))*ifelse(tr==1,1,0) +   (Y/(2*(k+r/2)) - (1-Y)*ezb/(2*q))*ifelse(tr==2,1,0))
   out.k  <- sum( (Y/(  (k-r/2)) - (1-Y)*ezb /(  q))*ifelse(tr==1,1,0) +   (Y/(  (k+r/2)) - (1-Y)*ezb/(  q))*ifelse(tr==2,1,0))
   out    <- c(out.r,out.k)
   for (i in 1:nc) out <- c(out,sum(Y*Z[,i]-(1-Y)*Z[,i]*p/q))
   matrix(out,ncol=1)
 }
+
+
+
+####Individual-Level covariates: relative risk
+
+dL.COR    <- function(R1,R2,b,tr,n,Z,Y) {
+  nc     <- length(b)
+  ezb    <- exp(Z%*%b)
+  p      <- ezb*ifelse(tr==1,R1,ifelse(tr==2,R2,1))
+  p      <- ifelse(p<0.000001,0.000001,p)
+  q      <- 1-p
+  q      <- ifelse(q<0.000001,0.000001,q)
+  out.R1  <- sum( (Y/R1 - (1-Y)*ezb /q)*ifelse(tr==1,1,0))
+  out.R2  <- sum( (Y/R2 - (1-Y)*ezb /q)*ifelse(tr==2,1,0))
+  out    <- c(out.R1,out.R2)
+  for (i in 1:nc) out <- c(out,sum(Y*Z[,i]-(1-Y)*Z[,i]*p/q))
+  matrix(out,ncol=1)
+}
+
 
 
 ####################################################################################################################
@@ -473,9 +674,19 @@ fI.OP1   <- function(pa,p3,r,n1,n2,n3){
   r2 <- r/2
   p1 <- pa - r2*p3
   p2 <- pa + r2*p3
+  if (sum(p1==0) > 0 | sum(p2==0) > 0) { pa <- ifelse(p1==0 | p2==0,pa+0.000001,pa)
+  p1 <- pa - r2*p3
+  p2 <- pa + r2*p3
+  }
   q1 <- 1-p1
   q2 <- 1-p2
   q3 <- 1-p3
+  #p1      <- ifelse(p1>=0 & p1 < 0.000001 ,0.000001,p1)
+  #q1      <- ifelse(q1>=0 & q1 < 0.000001, 0.000001,q1)
+  #p2      <- ifelse(p2>=0 & p2 < 0.000001 ,0.000001,p2)
+  #q2      <- ifelse(q2>=0 & q2 < 0.000001, 0.000001,q2)
+  #p3      <- ifelse(p3>=0 & p3 < 0.000001 ,0.000001,p3)
+  #q3      <- ifelse(q3>=0 & q3 < 0.000001, 0.000001,q3)
   s  <- length(pa)
   prob <- 0
   if(sum(p1<0) > 0 | sum(p1>1) > 0 | sum(p2<0) > 0 | sum(p2>1) > 0) prob <- 1
@@ -511,6 +722,12 @@ fI.OP2   <- function(t,p3,r,n1,n2,n3){
   q1 <- 1-p1
   q2 <- 1-p2
   q3 <- 1-p3
+  p1      <- ifelse(p1>=0 & p1 < 0.000001 ,0.000001,p1)
+  q1      <- ifelse(q1>=0 & q1 < 0.000001, 0.000001,q1)
+  p2      <- ifelse(p2>=0 & p2 < 0.000001 ,0.000001,p2)
+  q2      <- ifelse(q2>=0 & q2 < 0.000001, 0.000001,q2)
+  p3      <- ifelse(p3>=0 & p3 < 0.000001 ,0.000001,p3)
+  q3      <- ifelse(q3>=0 & q3 < 0.000001, 0.000001,q3)
   s  <- length(p3)
   prob <- 0
   if(sum(p1<0) > 0 | sum(p1>1) > 0 | sum(p2<0) > 0 | sum(p2>1) > 0) prob <- 1
@@ -575,18 +792,50 @@ fI.TP <- function(t,r,p01,p02,n1,n2,n01,n02) {
 fI.CO <- function(r,k,b,tr,n,Z) {
   nc     <- length(b)
   ezb    <- exp(Z%*%b)
+  #ezb    <- ifelse(tr==1 & ezb*(k-r/2) < 0.000001,0.000001/(k-r/2),
+  #                 ifelse(tr==2 & ezb*(k+r/2) < 0.000001,0.000001/(k+r/2),ezb))
   ezb2   <- ezb^2
   p      <- ezb*ifelse(tr==1,k-r/2,ifelse(tr==2,k+r/2,1))
   q      <- 1-p
+  p      <- ifelse(p>=0 & p < 0.000001 ,0.000001,p)
+  q      <- ifelse(q>=0 & q < 0.000001, 0.000001,q)
   Zmat   <- matrix(nrow=nc,ncol=nc)
   I      <- matrix(nrow=(nc+2),ncol=(nc+2))
   for (i in 1:nc) for (j in 1:nc)  Zmat[i,j] <- sum(-Z[,i]*Z[,j]*p/q)
   I[-c(1,2),-c(1:2)] <- Zmat
-  I[2,2]  <- sum((-p/(k-r/2)^2 - ezb2/q)*ifelse(tr==1,1,0) + (-p/(k+r/2)^2 - ezb2/q)*ifelse(tr==2,1,0))
-  I[1,1]  <- sum((-p/(4*(k-r/2)^2) - ezb2/(4*q))*ifelse(tr==1,1,0) + (-p/(4*(k+r/2)^2) - ezb2/(4*q))*ifelse(tr==2,1,0))
-  I[1,2]  <- I[2,1] <- sum((p/(2*(k-r/2)^2) + ezb2/(2*q))*ifelse(tr==1,1,0) - (p/(2*(k+r/2)^2) + ezb2/(2*q))*ifelse(tr==2,1,0))
+  I[2,2]  <-           sum((-p/(  (k-r/2)^2) - ezb2/   q )*ifelse(tr==1,1,0) + (-p/(  (k+r/2)^2) - ezb2/   q )*ifelse(tr==2,1,0))
+  I[1,1]  <-           sum((-p/(4*(k-r/2)^2) - ezb2/(4*q))*ifelse(tr==1,1,0) + (-p/(4*(k+r/2)^2) - ezb2/(4*q))*ifelse(tr==2,1,0))
+  I[1,2]  <- I[2,1] <- sum(( p/(2*(k-r/2)^2) + ezb2/(2*q))*ifelse(tr==1,1,0) + (-p/(2*(k+r/2)^2) - ezb2/(2*q))*ifelse(tr==2,1,0))
   for (i in 1:nc) I[1,i+2] <- I[i+2,1] <- sum(  (Z[,i]*ezb/(2*q))*ifelse(tr==1,1,0) - (Z[,i]*ezb/(2*q))*ifelse(tr==2,1,0))
-  for (i in 1:nc) I[2,i+2] <- I[i+2,2] <- -sum( (Z[,i]*ezb/(q))*ifelse(tr==1,1,0)   + (Z[,i]*ezb/(q))*ifelse(tr==2,1,0))
+  for (i in 1:nc) I[2,i+2] <- I[i+2,2] <- -sum( (Z[,i]*ezb/(  q))*ifelse(tr==1,1,0) + (Z[,i]*ezb/(q))*ifelse(tr==2,1,0))
+  -I
+}
+
+
+
+
+
+
+###Individual-level covariates: Relative Risk
+
+
+fI.COR <- function(R1,R2,b,tr,n,Z) {
+  nc     <- length(b)
+  ezb    <- exp(Z%*%b)
+  ezb2   <- ezb^2
+  p      <- ezb*ifelse(tr==1,R1,ifelse(tr==2,R2,1))
+  q      <- 1-p
+  p      <- ifelse(p>=0 & p < 0.000001 ,0.000001,p)
+  q      <- ifelse(q>=0 & q < 0.000001, 0.000001,q)
+  Zmat   <- matrix(nrow=nc,ncol=nc)
+  I      <- matrix(nrow=(nc+2),ncol=(nc+2))
+  for (i in 1:nc) for (j in 1:nc)  Zmat[i,j] <- sum(-Z[,i]*Z[,j]*p/q)
+  I[-c(1,2),-c(1:2)] <- Zmat
+  I[2,2]  <- sum((-p/(R2)^2 - ezb2/q)*ifelse(tr==2,1,0))
+  I[1,1]  <- sum((-p/(R1)^2 - ezb2/q)*ifelse(tr==1,1,0))
+  I[1,2]  <- I[2,1] <- 0
+  for (i in 1:nc) I[1,i+2] <- I[i+2,1] <- -sum(  (Z[,i]*ezb/(q))*ifelse(tr==1,1,0))
+  for (i in 1:nc) I[2,i+2] <- I[i+2,2] <- -sum(  (Z[,i]*ezb/(q))*ifelse(tr==2,1,0))
   -I
 }
 
@@ -780,6 +1029,50 @@ fL.kbr(kbr,Y,Z,tr,deriv)
 
 
 
+#########################################################
+
+
+
+
+fL.kbr2         <- function(kbr,Y,Z,tr,deriv=0){
+  k <- kbr[1]
+  b <- kbr[2:(1+ncol(Z))]
+  r <- kbr[(2+ncol(Z))]
+  if (deriv==0) out <- fL.COR(r,k,b,Y,Z,tr)
+  if (deriv==1) out <- dL.COR(r,k,b,tr,n=length(Y),Z,Y)
+  out
+}
+
+fL.kb2         <- function(kb,Y,Z,tr,r,deriv=0){
+  k <- kb[1]
+  b <- kb[2:(1+ncol(Z))]
+  if (deriv==0) out <- fL.COR(r,k,b,Y,Z,tr)
+  if (deriv==1) out <- dL.COR(r,k,b,tr,n=length(Y),Z,Y)[-1]
+  out
+}
+
+
+fL.kb.parms2 <- function(kb,parms) {   n     <- parms[1]
+r     <- parms[2]
+deriv <- parms[3]
+Y     <- parms[(4:(n+3))]
+tr    <- parms[(n+4):(2*n+3)]
+Z     <- matrix(parms[-c(1:(2*n+3))],byrow=F,nrow=n)
+fL.kb2(kb,Y,Z,tr,r,deriv)
+}
+
+
+fL.kbr.parms2 <- function(kbr,parms) {   n     <- parms[1]
+deriv <- parms[2]
+Y     <- parms[(3:(n+2))]
+tr    <- parms[(n+3):(2*n+2)]
+Z     <- matrix(parms[-c(1:(2*n+2))],byrow=F,nrow=n)
+fL.kbr2(kbr,Y,Z,tr,deriv)
+}
+
+
+
+
 
 ####################################################################################################################
 #####
@@ -787,14 +1080,87 @@ fL.kbr(kbr,Y,Z,tr,deriv)
 #####
 ####################################################################################################################
 
+optim.range <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0,s=NA,allParam=NA,paramType=NA,nparam=NA,curIndex=NA,curParam=NA){
+
+  if (method.rr=="OP" & altParam==0)  strata.s        <- c(rep(c(1:s),2),0)
+  if (method.rr=="OP" & altParam==1)  strata.s        <- c(0,c(1:s),0)
 
 
-optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
+  if (method.rr=="OP" & altParam==0){ if (curParam == "pa")  {min.v <-   max(  abs(allParam[paramType=="r"]) * allParam[paramType=="p3" & strata.s==strata.s[curIndex]]/2,0.000001)
+  max.v <-   min(1-abs(allParam[paramType=="r"]) * allParam[paramType=="p3" & strata.s==strata.s[curIndex]]/2,0.999999)}
+    if (curParam == "r")                                     {min.v <-   max(c(-2*(1-allParam[paramType =="pa"])/allParam[paramType=="p3"],-2*allParam[paramType =="pa"]/allParam[paramType =="p3"]))
+    max.v <-   min(c(2*allParam[paramType =="pa"]/allParam[paramType=="p3"],2*(1-allParam[paramType =="pa"])/allParam[paramType =="p3"])) }
+    if (curParam == "p3")  {paJ <- allParam[paramType =="pa" & strata.s==strata.s[curIndex]]
+    rJ  <- allParam[paramType=="r"]
+    if (rJ != 0) max.v <-   min(c(2*(1-paJ)/abs(rJ),2*paJ/abs(rJ),  0.99999))
+    min.v <-  0.00001
+    if (rJ == 0) max.v <-  0.99999
+    }}
+
+
+
+  if (method.rr=="OP" & altParam==1){ if (curParam == "t")  { min.v <-   max(      c(abs(allParam[paramType=="r"])/2) )
+  max.v <-   min(      c((1 + allParam[paramType=="r"] * allParam[paramType=="p3"]/2)/allParam[paramType=="p3"],
+                         (1 - allParam[paramType=="r"] * allParam[paramType=="p3"]/2)/allParam[paramType=="p3"]))}
+    if (curParam == "r")   {min.v <-   max( c( -2*(1-allParam[paramType =="t"]*allParam[paramType=="p3"])/allParam[paramType=="p3"], -2*allParam[paramType =="t"]    ))
+    max.v <-   min( c( 2*(1-allParam[paramType =="t"]*allParam[paramType=="p3"])/allParam[paramType=="p3"], 2*allParam[paramType =="t"]    )) }
+    if (curParam == "p3")  {min.v <-   0.000001
+    max.v <-   min( 1/(allParam[paramType =="t"]+abs(allParam[paramType=="r"])/2),0.99999)}}
+
+
+  if (method.rr=="CO")              { if (curParam == "k")  {  rrr   <- allParam[length(allParam)]
+  min.v <- 1.0001*abs(rrr/2) + 0.000001*ifelse(abs(rrr) < 0.000001,1,0)
+  max.v <- min(1/max(exp(Z%*%b))-rrr/2,1/max(exp(Z%*%b))+rrr/2,3)}
+    if (curParam == "b")  {  rrr  <- allParam[length(allParam)]
+    kkk  <- allParam[1]
+    bbb  <- allParam[-c(1,curIndex,length(allParam))]
+    ppp  <- exp(Z[,-(curIndex-1)]%*%matrix(bbb,ncol=1))*ifelse(tr==1,kkk-rrr/2,ifelse(tr==2,kkk+rrr/2,1))
+    ppp  <- ifelse(ppp<0.000001,0.000001,ppp)
+    min.v<- max(  ifelse(Z[,(curIndex-1)]<0,log(1/ppp)/Z[,(curIndex-1)],-10^10) )
+    max.v<- min(  ifelse(Z[,(curIndex-1)]>0,log(1/ppp)/Z[,(curIndex-1)], 10^10) )}
+    if (curParam == "r")  {  kkk  <- allParam[1]
+    bbb  <- allParam[-c(1,length(allParam))]
+    min.v <- min(ifelse(tr==2,-2*kkk,
+                        ifelse(tr==1,-2*(1/exp(Z%*%matrix(bbb,ncol=1))-kkk),-5)))
+    max.v <- min(ifelse(tr==1,2*kkk,
+                        ifelse(tr==1, 2*(1/exp(Z%*%matrix(bbb,ncol=1))-kkk),5)))}}
+
+
+
+  if (method.rr=="COR")             {if (curParam == "R2" | curParam == "R1") {min.v <- 0.000001
+  max.v <- 1/allParam[paramType=="p3"]
+  mult2 <- 0.1}
+    if (curParam == "b")                     {R2R2  <- allParam[length(allParam)]
+    R1R1  <- allParam[1]
+    bbb   <- allParam[-c(1,curIndex,length(allParam))]
+    ppp   <- exp(Z[,-(curIndex-1)]%*%matrix(bbb,ncol=1))*ifelse(tr==1,R1R1,ifelse(tr==2,R2R2,1))
+    min.v <- max(  ifelse(Z[,(curIndex-1)]<0,log(1/ppp)/Z[,(curIndex-1)],-10^10) )
+    max.v  <- min(  ifelse(Z[,(curIndex-1)]>0,log(1/ppp)/Z[,(curIndex-1)],10^10) )}
+    mult2  <- 2}
+
+
+  list("min.v"=min.v,"max.v"=max.v)
+}
+
+
+optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
   s              <- length(x1)
   if (method.rr=="OP" & altParam==0)  allParam       <- c(pa,p3,r)
   if (method.rr=="OP" & altParam==1)  allParam       <- c(t,p3,r)
   if (method.rr=="CO")                allParam       <- c(k,b,r)
+  if (method.rr=="COR")               allParam       <- c(R2,b,R1)
   if (method.rr=="TP")                allParam       <- c(tp,p3,p4,r)
+
+
+  paramType <- rep(NA,length(allParam))
+  if (method.rr=="OP" & altParam==0)  paramType       <- c(rep("pa",length(pa)),rep("p3",length(p3)),rep("r",length(r)))
+
+  if (method.rr=="OP" & altParam==1)  paramType       <- c(rep("t",length(t)),  rep("p3",length(p3)),rep("r",length(r)))
+
+  if (method.rr=="CO")                paramType       <- c(rep("k",length(k)),  rep("b",length(b)),  rep("r",length(r)))
+  if (method.rr=="COR")               paramType       <- c(rep("R2",length(R2)),rep("b",length(b)),  rep("R1",length(R1)))
+  if (method.rr=="TP")                paramType       <- c(rep("tp",length(pa)),rep("p3",length(p3)),rep("p4",length(p4)),rep("r",length(r)))
+
 
   if (fix.r==0)  nparam <- length(allParam)
   if (fix.r==1)  nparam <- length(allParam)-1
@@ -806,29 +1172,39 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
   #print("WARNING: If there are a large number of strata (or covariates), this grid search may take > 10-20 minutes.")
   for (nattempt in 1:10000){
     for (curIndex in 1:nparam){
-      if (curIndex <   length(allParam) & method.rr=="OP") poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-0.1*mult,0.0001),min(allParam[curIndex]+0.1*mult,0.9999),length.out=10)))
-      if (curIndex ==  length(allParam) & method.rr=="OP") poss.vals <- sort(c(allParam[curIndex],seq    (allParam[curIndex]-0.1*mult,            allParam[curIndex]+0.1*mult,        length.out=10)))
-      if (curIndex <   length(allParam) & method.rr=="TP") poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-0.1*mult,0.0001),min(allParam[curIndex]+0.1*mult,0.9999),length.out=10)))
+
+      curParam <- paramType[curIndex]
+      range  <- optim.range(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,R1=R1,R2=R2,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes,s=s,allParam=allParam,paramType=paramType,nparam=nparam,curIndex=curIndex,curParam=curParam)
+      min.v  <- range$min.v
+      max.v  <- range$max.v
+
+
+      if (method.rr=="OP") if(allParam[curIndex] >= min.v & allParam[curIndex] <= max.v)  poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-0.1*mult,min.v),min(allParam[curIndex]+0.1*mult,max.v),length.out=10)))
+      if (method.rr=="OP") if((allParam[curIndex] < min.v | allParam[curIndex] > max.v))  poss.vals <- sort(c(seq(max(allParam[curIndex]-0.1*mult,min.v),min(allParam[curIndex]+0.1*mult,max.v),length.out=10)))
+
+
+
+      if (method.rr=="CO") if( allParam[curIndex]  >= min.v & allParam[curIndex] <= max.v) poss.vals <- sort(c(   allParam[curIndex]      ,seq(max(allParam[curIndex]-2*mult,  min.v),min(allParam[curIndex]+2*mult,  max.v),length.out=10)))
+      if (method.rr=="CO") if( (allParam[curIndex] < min.v  | allParam[curIndex] > max.v)) poss.vals <- sort(c(   seq(max(allParam[curIndex]-2*mult,  min.v),min(allParam[curIndex]+2*mult,  max.v),length.out=10)))
+
+
+
+      if (method.rr=="COR")             {if (curParam == "R2" | curParam == "R1") mult2 <- 0.1
+      if (curParam == "b")                     mult2  <- 2}
+      if (method.rr=="COR") if(allParam[curIndex]  >= min.v & allParam[curIndex] <= max.v) poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-mult2*mult,min.v),min(allParam[curIndex]+mul2*mult,max.v),length.out=10)))
+      if (method.rr=="COR") if( (allParam[curIndex] < min.v  | allParam[curIndex] > max.v)) poss.vals <- sort(c(seq(max(allParam[curIndex]-mult2*mult,min.v),min(allParam[curIndex]+mul2*mult,max.v),length.out=10)))
+
+
+      if (curIndex <   length(allParam) & method.rr=="TP") poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-0.1*mult,0.000001),min(allParam[curIndex]+0.1*mult,0.9999),length.out=10)))
       if (curIndex ==  length(allParam) & method.rr=="TP") poss.vals <- sort(c(allParam[curIndex],seq    (allParam[curIndex]-0.1*mult,            allParam[curIndex]+0.1*mult,        length.out=10)))
 
-      if (curIndex ==  1 & method.rr=="CO")                {  rrr  <- allParam[length(allParam)]
-      tlb  <- abs(rrr/2)
-      tub  <- min(1/max(exp(Z%*%b)),3)
-      poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-2*mult,tlb),min(allParam[curIndex]+2*mult,tub),length.out=10)))}
-      if (curIndex >  1 & curIndex <   length(allParam) & method.rr=="CO")                {  rrr  <- allParam[length(allParam)]
-      kkk  <- allParam[1]
-      bbb  <- allParam[-c(1,curIndex,length(allParam))]
-      ppp  <- exp(Z[,-(curIndex-1)]%*%matrix(bbb,ncol=1))*ifelse(tr==1,kkk-rrr/2,ifelse(tr==2,kkk+rrr/2,1))
-      tlb  <- max(  ifelse(Z[,(curIndex-1)]<0,log(1/ppp)/Z[,(curIndex-1)],-10^10) )
-      tub  <- min(  ifelse(Z[,(curIndex-1)]>0,log(1/ppp)/Z[,(curIndex-1)],10^10) )
-      poss.vals <- sort(c(allParam[curIndex],seq(max(allParam[curIndex]-2*mult,tlb),min(allParam[curIndex]+2*mult,tub),length.out=10)))}
-      if (curIndex ==  length(allParam) & method.rr=="CO") poss.vals <- sort(c(allParam[curIndex],seq    (allParam[curIndex]-0.1*mult,            allParam[curIndex]+0.1*mult,        length.out=10)))
       npv       <- length(poss.vals)
       func.vals <- matrix(nrow=npv,ncol=1)
       for (i in 1:npv) {allParam[curIndex]=poss.vals[i]
       if (method.rr=="OP" & altParam==0) func.vals[i] <- fL.OP(NA,allParam[1:s],allParam[(s+1):(2*s)],allParam[2*s+1],x1,x2,x3,n1,n2,n3)
       if (method.rr=="OP" & altParam==1) func.vals[i] <- fL.OP(allParam[1],NA,allParam[(2):(s+1)],allParam[s+2],x1,x2,x3,n1,n2,n3)
       if (method.rr=="CO")               func.vals[i] <- fL.CO(allParam[length(allParam)],allParam[1],allParam[-c(1,length(allParam))],Y,Z,tr)
+      if (method.rr=="COR")              func.vals[i] <- fL.COR(allParam[length(allParam)],allParam[1],allParam[-c(1,length(allParam))],Y,Z,tr)
       if (method.rr=="TP")               func.vals[i] <- fL.TP(allParam[1:s],allParam[length(allParam)],allParam[(s+1):(2*s)],allParam[(2*s+1):(3*s)],x1,x2,x3,x4,n1,n2,n3,n4)
       }
       allParam[curIndex] <-poss.vals[which.min(func.vals)]
@@ -836,6 +1212,7 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
     if (method.rr=="OP" & altParam==0) newMin <- fL.OP(NA,allParam[1:s],allParam[(s+1):(2*s)],allParam[2*s+1],x1,x2,x3,n1,n2,n3)
     if (method.rr=="OP" & altParam==1) newMin <- fL.OP(allParam[1],NA,  allParam[(2):(s+1)],  allParam[s+2],  x1,x2,x3,n1,n2,n3)
     if (method.rr=="CO")               newMin <- fL.CO(allParam[length(allParam)],allParam[1],allParam[-c(1,length(allParam))],Y,Z,tr)
+    if (method.rr=="COR")              newMin <- fL.COR(allParam[length(allParam)],allParam[1],allParam[-c(1,length(allParam))],Y,Z,tr)
     if (method.rr=="TP")               newMin <- fL.TP(allParam[1:s],allParam[length(allParam)],allParam[(s+1):(2*s)],allParam[(2*s+1):(3*s)],x1,x2,x3,x4,n1,n2,n3,n4)
     if (newMin==prevMin) mult <- 0.9*mult
     prevMin <- newMin
@@ -849,6 +1226,8 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
     if (method.rr=="OP" & altParam==1 & allRes==0 & fix.r==1) out <- list("pa"=NA,           "p3"=allParam[(2):(s+1)],  "r"=allParam[s+2],  "t"=allParam[1])
     if (method.rr=="CO"               & allRes==0 & fix.r==0) out <- allParam[length(allParam)]
     if (method.rr=="CO"               & allRes==0 & fix.r==1) out <- list("r"=allParam[length(allParam)],"k"=allParam[1],"b"=allParam[-c(1,length(allParam))])
+    if (method.rr=="COR"              & allRes==0 & fix.r==0) out <- allParam[length(allParam)]
+    if (method.rr=="COR"              & allRes==0 & fix.r==1) out <- list("R1"=allParam[length(allParam)],"R2"=allParam[1],"b"=allParam[-c(1,length(allParam))])
     if (method.rr=="TP"               & allRes==0 & fix.r==0) out <- allParam[length(allParam)]
     if (method.rr=="TP"               & allRes==0 & fix.r==1) out <- list("tp"=allParam[1:s],"r"=allParam[length(allParam)],"p3"=allParam[(s+1):(2*s)],"p4"=allParam[(2*s+1):(3*s)])
 
@@ -859,6 +1238,8 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
     if (method.rr=="OP" & altParam==1 & allRes==1 & fix.r==0) out <- c(allParam[1],allParam[(2):(s+1)],allParam[s+2])
     if (method.rr=="CO"               & allRes==1 & fix.r==1) out <- allParam[-length(allParam)]
     if (method.rr=="CO"               & allRes==1 & fix.r==0) out <- allParam
+    if (method.rr=="COR"              & allRes==1 & fix.r==1) out <- allParam[-length(allParam)]
+    if (method.rr=="COR"              & allRes==1 & fix.r==0) out <- allParam
     if (method.rr=="TP"               & allRes==1 & fix.r==1) out <- allParam[-length(allParam)]
     if (method.rr=="TP"               & allRes==1 & fix.r==0) out <- allParam
 
@@ -868,7 +1249,7 @@ optim.force <-  function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,
 
 
 
-optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
+optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
   s      <- length(x1)
   r.out  <- r
   t.out  <- NA
@@ -895,6 +1276,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
         if (ok==1) p3.out[sss]  <- resb$root[2]
         if (ok==1)             out <- list("pa"=pa.out,"p3"=p3.out)
         if (ok==1 & allRes==1) out <- c(pa.out,p3.out)
+        if (ok==1) if (max(c(pa.out-r*p3.out/2,pa.out+r*p3.out/2,p3.out),na.rm=T) > 1 | min(c(pa.out-r*p3.out/2,pa.out+r*p3.out/2,p3.out),na.rm=T) < 0) ok <- 0
       }
     }
 
@@ -903,8 +1285,11 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       ll.start  <- fL.pap3r.parms.m5(c(pa,p3,r+5),parms=c(length(x1),x1,x2,x3,n1,n2,n3,0))
       try(ll.end    <- fL.pap3r.parms.m5(resb$root,   parms=c(length(x1),x1,x2,x3,n1,n2,n3,0)),silent=TRUE)
       if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
-      if (ok==1)             out  <- resb$root[2*s+1] -5
+      if (ok==1)             r.out <- out  <- resb$root[2*s+1] -5
       if (allRes==1 & ok==1) out  <- resb$root - c(rep(0,2*s),5)
+      if (ok == 1) {pa.out <- resb$root[1:s]
+      p3.out <- resb$root[(s+1):(2*s)]}
+      if (ok==1) if (max(c(pa.out-r.out*p3.out/2,pa.out+r.out*p3.out/2,p3.out),na.rm=T) > 1 | min(c(pa.out-r.out*p3.out/2,pa.out+r.out*p3.out/2,p3.out),na.rm=T) < 0) ok <- 0
     }
 
   }
@@ -921,6 +1306,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       if (ok==1) p3.out  <- resb$root[-1]
       if (ok==1)             out <- list("t"=t.out,"p3"=p3.out)
       if (ok==1 & allRes==1) out <- c(t.out,p3.out)
+      if (ok==1) if (max(c(t.out*p3.out - r*p3.out/2,t.out*p3.out + r*p3.out/2,p3.out),na.rm=T) > 1 | min(c(t.out*p3.out - r*p3.out/2,t.out*p3.out + r*p3.out/2,p3.out),na.rm=T) < 0) ok <- 0
     }
 
     if (fix.r==0){
@@ -928,8 +1314,13 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       ll.start  <- fL.tp3r.parms.m5(c(t,p3,r+5),parms=c(length(x1),x1,x2,x3,n1,n2,n3,0))
       try(ll.end    <- fL.tp3r.parms.m5(resb$root,   parms=c(length(x1),x1,x2,x3,n1,n2,n3,0)),silent=TRUE)
       if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
-      if (ok==1)             out  <- resb$root[s+2]-5
+      if (ok==1)             out   <- resb$root[s+2]-5
+      if (ok==1)             {t.out   <- resb$root[1]
+      p3.out  <- resb$root[1+c(1:s)]
+      r.out   <- out}
       if (allRes==1 & ok==1) out <- resb$root - c(rep(0,s+1),5)
+      if (ok==1) if (max(c(t.out*p3.out - r.out*p3.out/2,t.out*p3.out + r.out*p3.out/2,p3.out),na.rm=T) > 1 | min(c(t.out*p3.out - r.out*p3.out/2,t.out*p3.out + r.out*p3.out/2,p3.out),na.rm=T) < 0) ok <- 0
+
     }
 
   }
@@ -946,6 +1337,7 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       if (ok==1) b.out  <- resb$root[-1]
       if (ok==1)             out <- list("k"=k.out,"b"=b.out)
       if (ok==1 & allRes==1) out <- c(k.out,b.out)
+      if (ok==1) if (max(k.out-r/2,k.out+r/2,na.rm=T) > 1 | min(k.out-r/2,k.out+r/2,na.rm=T) < 0 ) ok <- 0
     }
 
     if (fix.r==0){
@@ -954,10 +1346,40 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
       try(ll.end    <- fL.kbr.parms(resb$root,   parms=c(length(Y),0,Y,tr,c(Z))),silent=TRUE)
       if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
       if (ok==1)             out  <- resb$root[length(c(k,b))+1]
+      if (ok==1)             {k.out  <- resb$root[1]
+      r.out  <- out}
+      if (allRes==1 & ok==1) out <- resb$root
+      if (ok==1) if (max(k.out-r.out/2,k.out+r.out/2,na.rm=T) > 1 | min(k.out-r.out/2,k.out+r.out/2,na.rm=T) < 0 ) ok <- 0
+    }
+
+  }
+
+
+
+  if (method.rr=="COR"){
+
+    if (fix.r==1){
+      resb     <- nleqslv2(x=c(R2,b),fn=fL.kb.parms2,parms=c(length(Y),R1,1,Y,tr,c(Z)))
+      ll.start <- fL.kb.parms2(c(R2,b),  parms=c(length(Y),R1,0,Y,tr,c(Z)))
+      try(ll.end   <- fL.kb.parms2(resb$root,parms=c(length(Y),R1,0,Y,tr,c(Z))),silent=TRUE)
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0) ok <- 0
+      if (ok==1) k.out   <- resb$root[1]
+      if (ok==1) b.out  <- resb$root[-1]
+      if (ok==1)             out <- list("R2"=k.out,"b"=b.out)
+      if (ok==1 & allRes==1) out <- c(k.out,b.out)
+    }
+
+    if (fix.r==0){
+      resb      <- nleqslv2(x=c(R2,b,R1),fn=fL.kbr.parms2,parms=c(length(Y),1,Y,tr,c(Z)))
+      ll.start  <- fL.kbr.parms2(c(R2,b,R1),parms=c(length(Y),0,Y,tr,c(Z)))
+      try(ll.end    <- fL.kbr.parms2(resb$root,   parms=c(length(Y),0,Y,tr,c(Z))),silent=TRUE)
+      if ((sum(resb$f.root>0.01)>1) | sum(is.na(resb$f.root))>0 | (ll.end>ll.start) | sum(is.na(resb$root))>0)ok <- 0
+      if (ok==1)             out  <- resb$root[length(c(R2,b))+1]
       if (allRes==1 & ok==1) out <- resb$root
     }
 
   }
+
 
   if (method.rr=="TP"){
 
@@ -990,11 +1412,11 @@ optim.ideal <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,m
   list("out"=out,"ok"=ok)
 }
 
-optim.DSS <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0){
+optim.DSS <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="OP",x1,x2,x3,x4,n1,n2,n3,n4,n,Z,Y,tr,fix.r=0,allRes=0,use.force=0){
   ideal = 1
-  optim.out <- optim.ideal(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)
-  if (optim.out$ok==0) {ideal=0
-  optim.out <- optim.force(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)}
+  optim.out <- optim.ideal(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,R1=R1,R2=R2,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)
+  if (optim.out$ok==0 | use.force==1) {ideal=0
+  optim.out <- optim.force(pa=pa,p3=p3,t=t,r=r,k=k,b=b,p4=p4,tp=tp,R1=R1,R2=R2,altParam=altParam,method.rr=method.rr,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=n,Z=Z,Y=Y,tr=tr,fix.r=fix.r,allRes=allRes)}
   list("out"=optim.out$out,"ideal"=ideal)
 }
 
@@ -1008,27 +1430,30 @@ optim.DSS <- function(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=NA,p4=NA,tp=NA,altParam=0,met
 
 
 
-opt.OP1 <- function(r,pa.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0){
-  optim.DSS(pa=pa.start,p3=p3.start,t=NA,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=0,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
+opt.OP1 <- function(r,pa.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0,use.force=0){
+  optim.DSS(pa=pa.start,p3=p3.start,t=NA,r=r,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="OP",x1=x1,x2=x2,x3=x3,x4=rep(0,length(x3)),n1=n1,n2=n2,n3=n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes,use.force=use.force)$out
 }
 
 
-opt.OP2 <- function(r,t.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0){
-  optim.DSS(pa=NA,p3=p3.start,t=t.start,r=r,k=NA,b=NA,p4=NA,tp=NA,altParam=1,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
+opt.OP2 <- function(r,t.start,p3.start,x1,x2,x3,n1,n2,n3,forceRoot=0,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=p3.start,t=t.start,r=r,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=1,method.rr="OP",x1=x1,x2=x2,x3=x3,x4=rep(0,length(x3)),n1=n1,n2=n2,n3=n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes,use.force=use.force)$out
 }
 
 
-opt.TP <- function(r,t.start,p01.start,p02.start,x1,x2,x01,x02,n1,n2,n01,n02,allRes=0){
-  optim.DSS(pa=NA,p3=p01.start,t=NA,r=r,k=NA,b=NA,p4=p02.start,tp=t.start,altParam=0,method.rr="TP",x1,x2,x01,x02,n1,n2,n01,n02,n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes)$out
+opt.TP <- function(r,t.start,p01.start,p02.start,x1,x2,x01,x02,n1,n2,n01,n02,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=p01.start,t=NA,r=r,k=NA,b=NA,p4=p02.start,tp=t.start,R1=NA,R2=NA,altParam=0,method.rr="TP",x1=x1,x2=x2,x3=x01,x4=x02,n1=n1,n2=n2,n3=n01,n4=n02,n=NA,Z=NA,Y=NA,tr=NA,fix.r=1,allRes=allRes,use.force=use.force)$out
 }
 
 
 
-opt.CO <- function(r,k.start,b.start,tr,Z,Y,allRes=0){
-  optim.DSS(pa=NA,p3=NA,t=NA,r=r,k=k.start,b=b.start,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=1,allRes=allRes)$out
+opt.CO <- function(r,k.start,b.start,tr,Z,Y,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=NA,t=NA,r=r,k=k.start,b=b.start,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=1,allRes=allRes,use.force=use.force)$out
 }
 
 
+opt.COR <- function(R1,R2.start,b.start,tr,Z,Y,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=b.start,p4=NA,tp=NA,R1=R1,R2=R2.start,altParam=0,method.rr="COR",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=1,allRes=allRes,use.force=use.force)$out
+}
 
 
 ####################################################################################################################
@@ -1038,17 +1463,21 @@ opt.CO <- function(r,k.start,b.start,tr,Z,Y,allRes=0){
 ####################################################################################################################
 
 
-getEst.OP <- function(init.pa=NA,init.t=NA,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,allRes=0,forceRoot=0){
-  optim.DSS(pa=init.pa,p3=init.p3,t=init.t,r=init.r,k=NA,b=NA,p4=NA,tp=NA,altParam=altParam,method.rr="OP",x1,x2,x3,x4=rep(0,length(x3)),n1,n2,n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)$out
+getEst.OP <- function(init.pa=NA,init.t=NA,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,allRes=0,forceRoot=0,use.force=0){
+  optim.DSS(pa=init.pa,p3=init.p3,t=init.t,r=init.r,k=NA,b=NA,p4=NA,tp=NA,R1=NA,R2=NA,altParam=altParam,method.rr="OP",x1=x1,x2=x2,x3=x3,x4=rep(0,length(x3)),n1=n1,n2=n2,n3=n3,n4=rep(0,length(x3)),n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes,use.force=use.force)$out
 }
 
-getEst.TP <- function(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4,allRes=0){
-  optim.DSS(pa=NA,p3=init.p3,t=NA,r=init.r,k=NA,b=NA,p4=init.p4,tp=init.tp,altParam=0,method.rr="TP",x1,x2,x3,x4,n1,n2,n3,n4,n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes)$out
+getEst.TP <- function(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=init.p3,t=NA,r=init.r,k=NA,b=NA,p4=init.p4,tp=init.tp,R1=NA,R2=NA,altParam=0,method.rr="TP",x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,n=NA,Z=NA,Y=NA,tr=NA,fix.r=0,allRes=allRes,use.force=use.force)$out
 }
 
 
-getEst.CO <- function(init.k,init.b,init.r,Y,Z,tr,allRes=0){
-  optim.DSS(pa=NA,p3=NA,t=NA,r=init.r,k=init.k,b=init.b,p4=NA,tp=NA,altParam=0,method.rr="CO",NA,NA,NA,NA,NA,NA,NA,NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=0,allRes=allRes)$out
+getEst.CO <- function(init.k,init.b,init.r,Y,Z,tr,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=NA,t=NA,r=init.r,k=init.k,b=init.b,p4=NA,tp=NA,R1=NA,R2=NA,altParam=0,method.rr="CO",x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=0,allRes=allRes,use.force=use.force)$out
+}
+
+getEst.COR <- function(init.R2,init.b,init.R1,Y,Z,tr,allRes=0,use.force=0){
+  optim.DSS(pa=NA,p3=NA,t=NA,r=NA,k=NA,b=init.b,p4=NA,tp=NA,R1=init.R1,R2=init.R2,altParam=0,method.rr="COR",x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,n=length(Y),Z=Z,Y=Y,tr=tr,fix.r=0,allRes=allRes,use.force=use.force)$out
 }
 
 
@@ -1057,6 +1486,7 @@ getEst.CO <- function(init.k,init.b,init.r,Y,Z,tr,allRes=0){
 #####Calculates the Z statistic for a given set of values
 #####
 ####################################################################################################################
+
 
 
 getZ2.OP1 <- function(pa,p3,r,x1,x2,x3,n1,n2,n3,unCond=0){
@@ -1117,6 +1547,23 @@ getZ2.CO <- function(r,k,b,tr,Z,Y,unCond=0) {
 }
 
 
+
+getZ2.COR <- function(R1,R2,b,tr,Z,Y,unCond=0) {
+  n <- length(Y)
+  I   <- fI.COR(R1,R2,b,tr,n,Z)
+  dL  <- dL.COR(R1,R2,b,tr,n,Z,Y)
+  Z2   <- -9999999
+  if (!is.na(I[1,1])){
+    si  <- solve(I[-1,-1])
+    if (unCond==0) v   <- I[1,1]-I[1,-1]%*%si%*%I[-1,1]
+    if (unCond==1) v   <- I[1,1]
+    if (v>0 & unCond==0)  Z2   <- (dL[1]- I[1,-1]%*%si%*%dL[-1])/sqrt(v)
+    if (v>0 & unCond==1)  Z2   <- (dL[1])/sqrt(v)
+  }
+  Z2
+}
+
+
 ####################################################################################################################
 #####
 #####Calculates Z values for a given value r (using MLE of other parameters)
@@ -1124,41 +1571,48 @@ getZ2.CO <- function(r,k,b,tr,Z,Y,unCond=0) {
 ####################################################################################################################
 
 
-getZ.OP1 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA){
+getZ.OP1 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA,use.force=0){
   if (sum(!is.na(sv))==0) sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
-  sv2 <- opt.OP1(r,sv$pa,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot)
+  sv2 <- opt.OP1(r,sv$pa,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot,use.force=use.force)
   Z <- getZ2.OP1(sv2$pa,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
   list("Z"=Z,"sv2"=sv2)
 }
 
 
-getZ.OP2 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA){
+getZ.OP2 <- function(r,x1,x2,x3,n1,n2,n3,unCond=0,forceRoot=0,sv=NA,use.force=0){
   if (sum(!is.na(sv))==0) sv  <- startVals.OP(x1,x2,x3,n1,n2,n3,r)
-  sv2 <- opt.OP2(r,sv$t,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot)
+  sv2 <- opt.OP2(r,sv$t,sv$p3,x1,x2,x3,n1,n2,n3,forceRoot=forceRoot,use.force=use.force)
   Z <- getZ2.OP2(sv2$t,sv2$p3,r,x1,x2,x3,n1,n2,n3,unCond)
   list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.TP <- function(r,x1,x2,x01,x02,n1,n2,n01,n02,unCond=0,sv=NA){
+getZ.TP <- function(r,x1,x2,x01,x02,n1,n2,n01,n02,unCond=0,sv=NA,use.force=0){
   if (sum(!is.na(sv))==0)  sv  <- startVals.TP(x1,x2,x01,x02,n1,n2,n01,n02,r)
-  sv2 <- opt.TP(r,sv$t,sv$p01,sv$p02,x1,x2,x01,x02,n1,n2,n01,n02)
+  sv2 <- opt.TP(r,sv$t,sv$p01,sv$p02,x1,x2,x01,x02,n1,n2,n01,n02,use.force=use.force)
   Z <- getZ2.TP(r,sv2$t,sv2$p01,sv2$p02,x1,x2,x01,x02,n1,n2,n01,n02,unCond)
   list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.CO <- function(r,tr,Z,Y,unCond=0,sv=NA){
+getZ.CO <- function(r,tr,Z,Y,unCond=0,sv=NA,use.force=0){
   if (sum(!is.na(sv))==0) sv  <- startVals.CO(r,tr,Z,Y)
-  sv2 <- opt.CO(r,sv$k,sv$b,tr,Z,Y)
-  Z<- getZ2.CO(r,sv2$k,sv2$b,tr,Z,Y,unCond)
+  sv2 <- opt.CO(r,sv$k,sv$b,tr,Z,Y,use.force=use.force)
+  ZZ<- getZ2.CO(r,sv2$k,sv2$b,tr,Z,Y,unCond)
+  list("Z"=ZZ,"sv2"=sv2)
+}
+
+getZ.COR <- function(R1,tr,Z,Y,unCond=0,sv=NA,use.force=0){
+  if (sum(!is.na(sv))==0) sv  <- startVals.COR(R1,tr,Z,Y)
+  sv2 <- opt.COR(R1,sv$R2,sv$b,tr,Z,Y,use.force=use.force)
+  Z<- getZ2.COR(R1,sv2$R2,sv2$b,tr,Z,Y,unCond)
   list("Z"=Z,"sv2"=sv2)
 }
 
-getZ.OP <- function(r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,forceRoot=0,sv=NA){
-  if (altParam==0) {ZSV <- getZ.OP1(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv)
+getZ.OP <- function(r,x1,x2,x3,n1,n2,n3,altParam=0,unCond=0,forceRoot=0,sv=NA,use.force=0){
+  if (altParam==0) {ZSV <- getZ.OP1(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv,use.force=use.force)
   Z   <- ZSV$Z
   sv2 <- ZSV$sv2
   }
-  if (altParam==1) {ZSV <- getZ.OP2(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv)
+  if (altParam==1) {ZSV <- getZ.OP2(r,x1,x2,x3,n1,n2,n3,unCond,forceRoot=forceRoot,sv=sv,use.force=use.force)
   Z   <- ZSV$Z
   sv2 <- ZSV$sv2
   }
@@ -1190,9 +1644,12 @@ startVals2.OP <- function(x1,x2,x3,n1,n2,n3,r){
   p2.t <- p1.t+d0
   pa=(p1.t+p2.t)/2
   p3=x3/n3
-  p3 <- ifelse(p3<0.0001,0.0001,p3)
-  if (pa < 0) pa <- (x1+x2)/(n1+n2)
-  t=pa/p3
+
+  p3 <- ifelse(p3<0.000001,0.000001,p3)
+  pa <- ifelse(pa < 0 | pa < r*p3/2 | is.na(pa), max(0,r*p3/2), pa)
+  t  <- mean(pa/p3)
+  t  <- ifelse(t > min((1-r*p3/2)/p3),min(1-r*p3/2)/p3,t)
+  t  <- ifelse(t < r/2,r/2,t)
   list("pa"=pa,"p3"=p3,"t"=t)
 }
 
@@ -1204,11 +1661,11 @@ startVals.OP <- function(x1,x2,x3,n1,n2,n3,r){
   if (s > 1) for (i in 2:s) { sv <- startVals2.OP(x1[i],x2[i],x3[i],n1[i],n2[i],n3[i],r)
   pa <- c(pa,sv$pa)
   p3 <- c(p3,sv$p3)}
-  p3 <- ifelse(p3<0.0001,0.0001,p3)
+  p3 <- ifelse(p3<0.000001,0.000001,p3)
   p1 <- pa - (r/2)*p3
   p2 <- pa + (r/2)*p3
 
-  thresh.p <- 0.00001
+  thresh.p <- 0.000001
   thresh.p2<- 0.99999
 
   p1 <- ifelse(p1 < thresh.p,thresh.p,p1)
@@ -1221,10 +1678,13 @@ startVals.OP <- function(x1,x2,x3,n1,n2,n3,r){
   p2 <- ifelse(p2 > thresh.p2,thresh.p2,p2)
   p1 <- ifelse(p2==thresh.p2, p2 - r*p3,p1)
   pa <- (p1 + p2)/2
+  pa <- ifelse(pa < 0 | pa < r*p3/2, max(0,r*p3/2), pa)
+
 
   N <- n1+n2+n3
   t <- sum(N*((pa-p3*r/2 + pa+p3*r/2 )/2))/sum(N*p3)
-
+  t  <- ifelse(t > min((1-r*p3/2)/p3),min(1-r*p3/2)/p3,t)
+  t  <- ifelse(t < r/2,r/2,t)
 
   list("pa"=pa,"p3"=p3,"t"=t)
 }
@@ -1246,7 +1706,17 @@ startVals.CO <- function(r,tr,Z,Y){
   if (sum(Y[tr==0])>0) sv <- log(sum(Y[tr==0])/sum(tr==0))
   b <- c(sv,rep(0,ncol(Z)-1))
   k <- (sum(Y[tr!=0])/sum(tr!=0))/(sum(Y[tr==0])/sum(tr==0))
+  k <- ifelse(k < abs(r/2)+0.00001, abs(r/2)+0.00001, k)
   list("k"=k,"b"=b)
+}
+
+
+startVals.COR <- function(R1,tr,Z,Y){
+  sv <- -10
+  if (sum(Y[tr==0])>0) sv <- log(sum(Y[tr==0])/sum(tr==0))
+  b <- c(sv,rep(0,ncol(Z)-1))
+  R2 <- (sum(Y[tr==2])/sum(tr==2))/(sum(Y[tr==0])/sum(tr==0))
+  list("R2"=R2,"b"=b)
 }
 
 
@@ -1259,24 +1729,25 @@ startVals.CO <- function(r,tr,Z,Y){
 
 startR.OP <- function(x1,x2,x3,n1,n2,n3){
   ###Option 1: Taylor Series Expansion
-  p1       <- sum(x1)/sum(n1) + 0.00001
-  p2       <- sum(x2)/sum(n2) + 0.00001
-  p3       <- sum(x3)/sum(n3) + 0.00001
-  v        <- (p1*(1-p1)/n1 + p2*(1-p2)/n2)/p3^2 + ((p1-p2)^2/(p3^4))*(p3*(1-p3)/n3)
-  v2       <- 0.25*(1/p3)^4*(p3*(1-p3)/n3)*p1*(1-p1)/n1 + 0.25*(1/p3)^4*(p3*(1-p3)/n3)*p2*(1-p2)/n2 + (1/p3)^6*((p1-p2)^2)*2*(p3*(1-p3)/n3)^2
-  v3       <- v + v2
-  rs       <- ((x2+0.5/n2)/(n2+0.5/n2) - (x1+0.5/n1)/(n1+0.5/n1))/((x3+0.5/n3)/(n3+0.5/n3))
-  out      <- sum(rs[x3>0]/v3[x3>0])/sum(1/v3[x3>0])
+  p1       <- sum(x1)/sum(n1) + 0.000001
+  p2       <- sum(x2)/sum(n2) + 0.000001
+  p3       <- sum(x3)/sum(n3) + 0.000001
+  #v        <- (p1*(1-p1)/n1 + p2*(1-p2)/n2)/p3^2 + ((p1-p2)^2/(p3^4))*(p3*(1-p3)/n3)
+  #v2       <- 0.25*(1/p3)^4*(p3*(1-p3)/n3)*p1*(1-p1)/n1 + 0.25*(1/p3)^4*(p3*(1-p3)/n3)*p2*(1-p2)/n2 + (1/p3)^6*((p1-p2)^2)*2*(p3*(1-p3)/n3)^2
+  #v3       <- v + v2
+  #rs       <- ((x2+0.5/n2)/(n2+0.5/n2) - (x1+0.5/n1)/(n1+0.5/n1))/((x3+0.5/n3)/(n3+0.5/n3))
+  #out      <- sum(rs[x3>0]/v3[x3>0])/sum(1/v3[x3>0])
+  out <- (p2-p1)/p3
   if (is.na(out)) out <- 0
   out
 }
 
 startR.TP <- function(x1,x2,x3,x4,n1,n2,n3,n4){
   ###Option 1: Taylor Series Expansion
-  p1       <- sum(x1)/sum(n1) + 0.00001
-  p2       <- sum(x2)/sum(n2) + 0.00001
-  p3       <- sum(x3)/sum(n3) + 0.00001
-  p4       <- sum(x4)/sum(n4) + 0.00001
+  p1       <- sum(x1)/sum(n1) + 0.000001
+  p2       <- sum(x2)/sum(n2) + 0.000001
+  p3       <- sum(x3)/sum(n3) + 0.000001
+  p4       <- sum(x4)/sum(n4) + 0.000001
   v        <- (p1*(1-p1)/n1)/p3^2 + (p2*(1-p2)/n2)/p4^2 + (p1^2/p3^4)*(p3*(1-p3)/n3) + (p2^2/p4^4)*(p4*(1-p4)/n4)
   rs       <- ((x2+0.5/n2)/(n2+0.5/n2))/((x4+0.5/n4)/(n4+0.5/n4)) - ((x1+0.5/n1)/(n1+0.5/n1))/((x3+0.5/n3)/(n3+0.5/n3))
   out      <- sum(rs[x3>0]/v[x3>0])/sum(1/v[x3>0])
@@ -1293,6 +1764,14 @@ startR.CO <- function(tr,Z,Y){
   out
 }
 
+startR.COR <- function(tr,Z,Y){
+  p1 <- mean(Y[tr==1],na.rm=T)
+  p3 <- mean(Y[tr==0],na.rm=T)
+  out <- p1/p3
+  if (is.na(out) | p3==0) out <- 0
+  out
+}
+
 
 ####################################################################################################################
 #####
@@ -1303,46 +1782,67 @@ startR.CO <- function(tr,Z,Y){
 
 ####Find the value of r that gives a z statistic that equals qnorm(alpha2) or qnorm(1-alpha2)
 ####
-findR.int <- function(r,alpha2,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,altParam=0,method.rr="OP",unCond=0,sv=NA)    {if (method.rr=="OP") out1 <- getZ.OP(r,x1,x2,x3,n1,n2,n3,altParam,unCond,forceRoot=1,sv=sv)
-if (method.rr=="TP") out1 <- getZ.TP(r,x1,x2,x3,x4,n1,n2,n3,n4,unCond,forceRoot=1,sv=sv)
-if (method.rr=="CO") out1 <- getZ.CO(r,tr,Z,Y,unCond,sv=sv)
-
+findR.int <- function(r,alpha2,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,altParam=0,method.rr="OP",unCond=0,sv=NA,use.force=0)    {if (method.rr=="OP") out1 <- getZ.OP(r,x1,x2,x3,n1,n2,n3,altParam,unCond,forceRoot=1,sv=sv,use.force=use.force)
+if (method.rr=="TP") out1 <- getZ.TP(r,x1,x2,x3,x4,n1,n2,n3,n4,unCond,forceRoot=1,sv=sv,use.force=use.force)
+if (method.rr=="CO") out1 <- getZ.CO(r,tr,Z,Y,unCond,sv=sv,use.force=use.force)
+if (method.rr=="COR")out1 <- getZ.COR(r,tr,Z,Y,unCond,sv=sv,use.force=use.force)
 out <- abs(    abs(out1$Z) - abs(qnorm(alpha2))  )
 sv2 <- out1$sv2
 list("out"=out,"sv2"=sv2)}
 
-boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025,type="UB",altParam=0,method.rr="OP",unCond=0)   {
-  if (type=="UB") min.r    <- EST+0.001
-  if (type=="UB") max.r    <- EST+2
-  if (type=="UB") start.r  <- min.r
-  if (type=="UB") last.r   <- max.r
-  if (type=="LB") min.r    <- EST-2
-  if (type=="LB") max.r    <- EST-0.001
-  if (type=="LB") start.r  <- max.r
-  if (type=="LB") last.r   <- min.r
-  poss.r  <- seq(start.r,last.r,by=ifelse(type=="LB",-1,1)*0.01)
-  poss.d  <- matrix(NA,ncol=1,nrow=length(poss.r))
-  sv      <- NA
-  for (i in 1:length(poss.r)) {
-    aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv),silent=TRUE)
-    if (class(aaa) != "try-error") poss.d[i] <- out2$out
-    if (class(aaa) != "try-error") sv        <- out2$sv2
-    if (i > 2) if ((poss.d[i] > poss.d[i-1] & poss.d[i] < 1) | is.na(poss.d[i]) | class(aaa) == "try-error") break
+
+
+boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,R2=NA,alpha2=0.025,type="UB",altParam=0,method.rr="OP",unCond=0)   {
+  out  <- NA
+  ntry <- 0
+  use.force <- 0
+  while (ntry <= 2 & is.na(out)) {
+    ntry=ntry+1
+    if (ntry==2) use.force <- 1
+
+    if (type=="UB") min.r    <- EST+0.001
+    if (type=="UB") max.r    <- EST+2
+    if (type=="UB") start.r  <- min.r
+    if (type=="UB") last.r   <- max.r
+    if (type=="LB") min.r    <- EST-2
+    if (type=="LB") max.r    <- EST-0.001
+    if (type=="LB" & method.rr=="COR") min.r <- max(min.r,0.001)
+    if (type=="LB" & method.rr=="COR") max.r <- max(max.r,0.001)
+    if (type=="LB") start.r  <- max.r
+    if (type=="LB") last.r   <- min.r
+    mult <- 0.01
+    if (abs(EST) <= 0.05) mult <- 0.001
+    poss.r  <- seq(start.r,last.r,by=ifelse(type=="LB",-1,1)*mult)
+    poss.d  <- matrix(NA,ncol=1,nrow=length(poss.r))
+    sv      <- NA
+    sv.list <- list()
+    minReq2 <- ifelse(!is.na(x1[1])  & (sum(x1==0)>0 | sum(x2==0)>0) ,3, ifelse(is.na(x1[1])  & (sum(Y[tr==1])==0 | sum(Y[tr==2])==0),3,1))
+    aDec <- 0
+    for (i in 1:length(poss.r)) {
+      aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv,use.force=use.force),silent=TRUE)
+      if (class(aaa) != "try-error") poss.d[i] <- out2$out
+      if (class(aaa) != "try-error") sv.list[[i]] <- sv        <- out2$sv2
+      if (class(aaa) != "try-error") if (i > 1) if (poss.d[i] < poss.d[i-1] & !is.na(poss.d[i]) & !is.na(poss.d[i-1]) ) aDec <- 1
+      if (i > 2) if ( ( (poss.d[i] > poss.d[i-1] & (poss.d[i-1] < minReq2 | poss.d[i-2] < minReq2) & aDec == 1 ) | is.na(poss.d[i]) | class(aaa) == "try-error") & (i > 3) ) sv <- sv.list[[i-3]]
+      if (i > 2) if (   (poss.d[i] > poss.d[i-1] & (poss.d[i-1] < minReq2 | poss.d[i-2] < minReq2) & aDec == 1 ) | is.na(poss.d[i]) | class(aaa) == "try-error") break
+    }
+    reachMax <- ifelse(i==length(poss.r),1,0)
+    poss.r   <- seq(poss.r[i-2],poss.r[i],by=ifelse(type=="LB",-1,1)*mult*0.1)
+    if (i==3 & is.na(poss.d[2]))  poss.r   <- seq(EST+ifelse(type=="LB",-1,1)*0.0001,poss.r[i],by=ifelse(type=="LB",-1,1)*0.001)
+    poss.d   <- matrix(ncol=1,nrow=length(poss.r))
+    for (i in 1:length(poss.r)) {
+      aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv,use.force=use.force),silent=TRUE)
+      if (class(aaa) != "try-error") poss.d[i] <- out2$out
+      if (class(aaa) != "try-error") sv        <- out2$sv2
+      if (i > 1) if (poss.d[i] > poss.d[i-1] | is.na(poss.d[i]) | class(aaa) == "try-error") break
+    }
+    minReq <- ifelse(!is.na(x1[1]) & (sum(x1==0)>0 | sum(x2==0)>0) ,1, ifelse(is.na(x1[1])  & (sum(Y[tr==1])==0 | sum(Y[tr==2])==0),3,0.25))
+    out <- ifelse(reachMax==1 | poss.d[i-1] > minReq,NA,poss.r[i-1])
   }
-  reachMax <- ifelse(i==length(poss.r),1,0)
-  poss.r   <- seq(poss.r[i-2],poss.r[i],by=ifelse(type=="LB",-1,1)*0.001)
-  poss.d   <- matrix(ncol=1,nrow=length(poss.r))
-  for (i in 1:length(poss.r)) {
-    aaa=try(out2 <- findR.int(r=poss.r[i],alpha2=alpha2,x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Z=Z,Y=Y,altParam=altParam,method.rr=method.rr,unCond=unCond,sv=sv),silent=TRUE)
-    if (class(aaa) != "try-error") poss.d[i] <- out2$out
-    if (class(aaa) != "try-error") sv        <- out2$sv2
-    if (i > 1) if (poss.d[i] > poss.d[i-1] | is.na(poss.d[i]) | class(aaa) == "try-error") break
-  }
-  out <- ifelse(reachMax==1 | poss.d[i-1] > 0.1,NA,poss.r[i])
   out}
 
 
-boundR    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025,type="UB",altParam=0,method.rr="TP",unCond=0)  {
+boundR    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025, type="UB",altParam=0,       method.rr="TP",     unCond=0)  {
   out <- boundR2(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha2,type=type,altParam=altParam,method.rr=method.rr,unCond=unCond)
   out
 }
@@ -1354,29 +1854,35 @@ boundR    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025,type="UB",
 ####################################################################################################################
 
 
-boundR.LRT <- function(init.r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=NA,Z=NA,tr=NA,init.pa=NA,init.p3=NA,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=0,alpha2=alpha/2,type="LB"){
+boundR.LRT <- function(init.r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=NA,Z=NA,tr=NA,init.pa=NA,init.p3=NA,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,init.R1=NA,init.R2=NA,method.rr="OP",altParam=0,alpha2=alpha/2,type="LB"){
 
 
-  comp        <- function(r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=NA,Z=NA,tr=NA,s=NA,EST.1=NA,init.pa=NA,init.p3=NA,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=0) {
-    if (method.rr=="OP" & altParam==0) EST.2     <- opt.OP1(r,init.pa,init.p3,x1,x2,x3,n1,n2,n3,forceRoot=1,allRes=1)
-    if (method.rr=="OP" & altParam==1) EST.2     <- opt.OP2(r,init.t,init.p3,x1,x2,x3,n1,n2,n3,forceRoot=1,allRes=1)
-    if (method.rr=="TP")               EST.2     <- opt.TP(r,init.t,init.p3,init.p4,x1,x2,x3,x4,n1,n2,n3,n4,allRes=1)
-    if (method.rr=="CO")               EST.2     <- opt.CO(r,k.start,b.start,tr,Z,Y,allRes=1)
-
+  comp        <- function(r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=NA,Z=NA,tr=NA,s=NA,EST.1=NA,init.pa=NA,init.p3=NA,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,R1=NA,init.R2=NA,method.rr="OP",altParam=0) {
+    if (method.rr=="OP" & altParam==0) EST.2     <- opt.OP1(r,init.pa,init.p3,x1,x2,x3,n1,n2,n3,forceRoot=1,allRes=1,use.force=1)
+    if (method.rr=="OP" & altParam==1) EST.2     <- opt.OP2(r,init.t,init.p3,x1,x2,x3,n1,n2,n3,forceRoot=1,allRes=1,use.force=1)
+    if (method.rr=="TP")               EST.2     <- opt.TP(r,init.t,init.p3,init.p4,x1,x2,x3,x4,n1,n2,n3,n4,allRes=1,use.force=1)
+    if (method.rr=="CO")               EST.2     <- opt.CO(r,init.k,init.b,tr,Z,Y,allRes=1,use.force=1)
+    if (method.rr=="COR")              EST.2     <- opt.COR(R1,init.R2,init.b,tr,Z,Y,allRes=1,use.force=1)
     if (method.rr=="OP" & altParam==0) out       <- -2*(fL.pap3r(EST.1,x1,x2,x3,n1,n2,n3)-fL.pap3r(c(EST.2,r),x1,x2,x3,n1,n2,n3))
     if (method.rr=="OP" & altParam==1) out       <- -2*(fL.tp3r( EST.1,x1,x2,x3,n1,n2,n3)-fL.tp3r(c( EST.2,r),x1,x2,x3,n1,n2,n3))
     if (method.rr=="TP"              ) out       <- -2*(fL.tp01p02r(EST.1,x1,x2,x3,x4,n1,n2,n3,n4)-fL.tp01p02r(c(EST.2,r),x1,x2,x3,x4,n1,n2,n3,n4))
     if (method.rr=="CO"              ) out       <- -2*(fL.kbr(EST.1,Y,Z,tr)-fL.kbr(c(EST.2,r),Y,Z,tr))
+    if (method.rr=="COR"             ) out       <- -2*(fL.kbr2(EST.1,Y,Z,tr)-fL.kbr2(c(EST.2,R1),Y,Z,tr))
     out
   }
 
   s           <- length(x1)
-  if (method.rr=="OP")               EST.1     <- getEst.OP(init.pa,init.t,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam,unCond=0,allRes=1)
-  if (method.rr=="TP")               EST.1     <- getEst.TP(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4,allRes=1)
-  if (method.rr=="CO")               EST.1     <- getEst.CO(init.k,init.b,init.r,Y,Z,tr,allRes=1)
+  if (method.rr=="OP")               EST.1     <- getEst.OP(init.pa,init.t,init.p3,init.r,x1,x2,x3,n1,n2,n3,altParam,unCond=0,allRes=1,use.force=1)
+  if (method.rr=="TP")               EST.1     <- getEst.TP(init.p4,init.tp,init.p3,init.r,x1,x2,x3,x4,n1,n2,n3,n4,allRes=1,use.force=1)
+  if (method.rr=="CO")               EST.1     <- getEst.CO(init.k,init.b,init.r,Y,Z,tr,allRes=1,use.force=1)
+  if (method.rr=="COR")              EST.1     <- getEst.COR(init.R2,init.b,init.R1,Y,Z,tr,allRes=1,use.force=1)
 
-  if (type=="UB") poss.r <- seq(init.r, init.r+2,by= 0.01)
-  if (type=="LB") poss.r <- seq(init.r, init.r-2,by=-0.01)
+  if (type=="UB" & method.rr != "COR") poss.r <- seq(init.r, init.r+2,by= 0.01)
+  if (type=="LB" & method.rr != "COR") poss.r <- seq(init.r, init.r-2,by=-0.01)
+  if (type=="UB" & method.rr == "COR") poss.r <- seq(init.R1, init.R1+2,by= 0.01)
+  if (type=="LB" & method.rr == "COR") poss.r <- seq(init.R1, min(0.001,init.R1/10), by=-0.01)
+
+
   npr    <- length(poss.r)
   v      <- matrix(nrow=npr,ncol=1)
   for (i in 1:npr) {
@@ -1384,10 +1890,41 @@ boundR.LRT <- function(init.r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA
     if (method.rr=="OP" & altParam==1) v[i] <- comp(r=poss.r[i],x1=x1,x2=x2,x3=x3,x4=NA,n1=n1,n2=n2,n3=n3,n4=NA,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=NA,init.t=init.t,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=1)
     if (method.rr=="TP"              ) v[i] <- comp(r=poss.r[i],x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=init.p4,init.t=NA,init.tp=init.tp,init.k=NA,init.b=NA,method.rr="TP",altParam=0)
     if (method.rr=="CO"              ) v[i] <- comp(r=poss.r[i],x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=init.k,init.b=init.b,method.rr="CO",altParam=0)
+    if (method.rr=="COR"             ) v[i] <- comp(r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=NA,init.b=init.b,init.R2=init.R2,R1=poss.r[i],method.rr="COR",altParam=0)
     if (abs(v[i]) > qchisq(1-2*alpha2,1)  ) break}
-  if (poss.r[i]==init.r+2 | poss.r[i]==init.r-2 ) poss.r[i] <- NA
+  if (i > 1) {if (type=="UB") poss.r2 <- seq(poss.r[i-1], poss.r[i],by= 0.001)
+  if (type=="LB") poss.r2 <- seq(poss.r[i-1], poss.r[i],by= -0.001)
+  npr2    <- length(poss.r2)
+  v2      <- matrix(nrow=npr2,ncol=1)
+  for (i in 1:npr2) {
+    if (method.rr=="OP" & altParam==0) v2[i] <- comp(r=poss.r2[i],x1=x1,x2=x2,x3=x3,x4=NA,n1=n1,n2=n2,n3=n3,n4=NA,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=init.pa,init.p3=init.p3,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=0)
+    if (method.rr=="OP" & altParam==1) v2[i] <- comp(r=poss.r2[i],x1=x1,x2=x2,x3=x3,x4=NA,n1=n1,n2=n2,n3=n3,n4=NA,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=NA,init.t=init.t,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=1)
+    if (method.rr=="TP"              ) v2[i] <- comp(r=poss.r2[i],x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=init.p4,init.t=NA,init.tp=init.tp,init.k=NA,init.b=NA,method.rr="TP",altParam=0)
+    if (method.rr=="CO"              ) v2[i] <- comp(r=poss.r2[i],x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=init.k,init.b=init.b,method.rr="CO",altParam=0)
+    if (method.rr=="COR"             ) v2[i] <- comp(r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=NA,init.b=init.b,init.R2=init.R2,R1=poss.r2[i],method.rr="COR",altParam=0)
+    if (abs(v2[i]) > qchisq(1-2*alpha2,1)  ) break}
+  }
 
-  poss.r[i]
+
+  # if (i > 1 & !is.na(EST) & abs(EST) < 0.01) {if (type=="UB") poss.r3 <- seq(poss.r2[i-1], poss.r2[i],by=  0.0001)
+  #                                             if (type=="LB") poss.r3 <- seq(poss.r2[i-1], poss.r2[i],by= -0.0001)
+  # npr3    <- length(poss.r3)
+  # v3      <- matrix(nrow=npr3,ncol=1)
+  # for (i in 1:npr3) {
+  #   if (method.rr=="OP" & altParam==0) v2[i] <- comp(r=poss.r3[i],x1=x1,x2=x2,x3=x3,x4=NA,n1=n1,n2=n2,n3=n3,n4=NA,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=init.pa,init.p3=init.p3,init.p4=NA,init.t=NA,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=0)
+  #   if (method.rr=="OP" & altParam==1) v2[i] <- comp(r=poss.r3[i],x1=x1,x2=x2,x3=x3,x4=NA,n1=n1,n2=n2,n3=n3,n4=NA,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=NA,init.t=init.t,init.tp=NA,init.k=NA,init.b=NA,method.rr="OP",altParam=1)
+  #  if (method.rr=="TP"              ) v2[i] <- comp(r=poss.r3[i],x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,Y=NA,Z=NA,tr=NA,s=s,EST.1=EST.1,init.pa=NA,init.p3=init.p3,init.p4=init.p4,init.t=NA,init.tp=init.tp,init.k=NA,init.b=NA,method.rr="TP",altParam=0)
+  #   if (method.rr=="CO"              ) v2[i] <- comp(r=poss.r3[i],x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=init.k,init.b=init.b,method.rr="CO",altParam=0)
+  #  if (method.rr=="COR"             ) v2[i] <- comp(r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,Y=Y,Z=Z,tr=tr,s=s,EST.1=EST.1,init.pa=NA,init.p3=NA,init.p4=NA,init.tp=NA,init.k=NA,init.b=init.b,init.R2=init.R2,R1=poss.r3[i],method.rr="COR",altParam=0)
+  #  if (abs(v2[i]) > qchisq(1-2*alpha2,1)  ) break}
+  # poss.r2=poss.r3
+  # }
+
+
+  if ( (poss.r2[i]==init.r+2 | poss.r2[i]==init.r-2)   & method.rr != "COR") poss.r2[i] <- NA
+  if ( (poss.r2[i]==init.R1+2) & method.rr == "COR") poss.r2[i] <- NA
+  poss.r2[i]
 }
+
 
 
