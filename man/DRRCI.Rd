@@ -6,7 +6,8 @@
 \usage{
 DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
   n3 = NA, n4 = NA, tr = NA, Y = NA, Z = NA, alpha = 0.05,
-  altParam = 0, deltaMethod = 0, refPop = NA, LRT = 0, estRR = 0)
+  altParam = 0, deltaMethod = 0, refPop = NA, LRT = 0, estRR = 0,
+  fast = 0)
 }
 \arguments{
 \item{x1}{The number of events in the first group  (either a single number if there is one strata or a vector if there are multiple strata)}
@@ -42,6 +43,8 @@ DRRCI(x1 = NA, x2 = NA, x3 = NA, x4 = NA, n1 = NA, n2 = NA,
 \item{LRT}{A binary variable indicating whether a likelihood-based confidence interval should be used (set to 0 for score-based confidence interval; set to 1 for likelihood-based confidence interval)}
 
 \item{estRR}{A binary variable indicating whether to calculate the confidence intervals for each relative risk, as opposed to the difference (set to 0 for calculating the CI for difference, 1 for calculating the CIs for RR; note only works when data is entered as Z, Y, tr)}
+
+\item{fast}{A binary variable to indicate that the optimizations should be performed over a coarser grid (set to 1 to speed up analysis; use with caution)}
 }
 \value{
 EST The estimated difference in relative risks

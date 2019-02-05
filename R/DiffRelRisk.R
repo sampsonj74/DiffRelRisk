@@ -24,6 +24,7 @@
 #' @param tr The treatment group for each subject (a vector with one value per subject; values are either 0, 1, or 2; only required if want to adjust for covariates)
 #' @param Y The outcome for each subject (a vector with one value per subject; values are either 0 or 1; only required if want to adjust for covariates)
 #' @param Z The covariates for each subject (a matrix with one value per subject and one column per covariate; only required if want to adjust for covariates)
+#' @param fast A binary variable to indicate that the optimizations should be performed over a coarser grid (set to 1 to speed up analysis; use with caution)
 #' @return EST The estimated difference in relative risks
 #' @return LB The lower bound for the difference
 #' @return UB The upper bound for the difference
@@ -48,8 +49,9 @@
 #' @export
 #'
 
-DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0){
-  if (estRR == 0) out <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
+
+DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0,fast=0){
+  if (estRR == 0) out <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR,fast=fast)
   if (estRR == 1 & is.na(x1[1])) {out1 <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=tr,Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
   out2 <- DRRCI2(x1=x1,x2=x2,x3=x3,x4=x4,n1=n1,n2=n2,n3=n3,n4=n4,tr=ifelse(tr==1,2,ifelse(tr==2,1,0)),Y=Y,Z=Z,alpha=alpha,altParam=altParam,deltaMethod=deltaMethod,refPop=refPop,LRT=LRT,estRR=estRR)
   out <- list("EST"=matrix(c(out1$EST,out2$EST),nrow=1),"LB"=matrix(c(out1$LB,out2$LB),nrow=1),"UB"=matrix(c(out1$UB,out2$UB),nrow=1),"beta"=out1$beta)
@@ -61,10 +63,10 @@ DRRCI <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=N
 
 
 
-DRRCI2 <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0){
+DRRCI2 <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=NA,alpha=0.05,altParam=0,deltaMethod=0,refPop=NA,LRT=0,estRR=0,fast=0){
 
 
-  if (!is.na(x1[1]) & is.na(refPop) & LRT==0 & altParam==0 & length(x1)>1){
+  if (!is.na(x1[1]) & is.na(refPop) & LRT==0 & altParam==0 & length(x1)>1 & refPop != "Ind"){
     x1a=x1
     x2a=x2
     r.simp <- (sum(x2)/sum(n2) - sum(x1)/sum(n1))/(sum(x3)/sum(n3))
@@ -223,8 +225,8 @@ DRRCI2 <- function(x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA,tr=NA,Y=NA,Z=
     }
 
     if ( (sum(x3)==0 | (sum(x4)==0 & sum(n4)>0)) &  substr(method.rr,1,2) != "CO")  EST     <- 0
-    if (!is.na(EST) & LRT==0) LB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="LB",altParam=altParam,method.rr=method.rr,unCond=unCond)
-    if (!is.na(EST) & LRT==0) UB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="UB",altParam=altParam,method.rr=method.rr,unCond=unCond)
+    if (!is.na(EST) & LRT==0) LB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="LB",altParam=altParam,method.rr=method.rr,unCond=unCond,fast=fast)
+    if (!is.na(EST) & LRT==0) UB    <- boundR(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha/2,type="UB",altParam=altParam,method.rr=method.rr,unCond=unCond,fast=fast)
     if (!is.na(EST) & LRT==1) try(LB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,init.R1,init.R2,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="LB"))
     if (!is.na(EST) & LRT==1) try(UB <- boundR.LRT(init.r,x1,x2,x3,x4,n1,n2,n3,n4,Y,Z,tr,init.pa,init.p3,init.p4,init.t,init.tp,init.k,init.b,init.R1,init.R2,method.rr=method.rr,altParam=altParam,alpha2=alpha/2,type="UB"))
 
@@ -336,15 +338,15 @@ deltaMethodF <- function(x1=NA,x2=NA,x3=NA,n1=NA,n2=NA,n3=NA,alpha=0.05,refPop=N
     x01.t <- sum(n1*p3.hat)
     x02.t <- sum(n2*p3.hat)
 
-    s1.hat <- sum(p1.hat*(1-p1.hat)/n1)
-    s2.hat <- sum(p2.hat*(1-p2.hat)/n2)
+    s1.hat <- sum(n1*p1.hat*(1-p1.hat))
+    s2.hat <- sum(n2*p2.hat*(1-p2.hat))
 
     s01.hat  <- sum(n1^2*p3.hat*(1-p3.hat)/n3)
     s02.hat  <- sum(n2^2*p3.hat*(1-p3.hat)/n3)
     s012.hat <- sum(n2*n1*p3.hat*(1-p3.hat)/n3)
 
     EST <- sum(x2)/sum(x02.t) - sum(x1)/sum(x01.t)
-    SE   <- sqrt(s1.hat/x01.t^2 + s2.hat/x02.t^2 + sum(x1)^2*s01.hat/x01.t^4 + sum(x2)^2*s02.hat/x02.t^4 + sum(x2)*sum(x1)*s012.hat/(x01.t^2*x02.t^2))
+    SE   <- sqrt(s1.hat/x01.t^2 + s2.hat/x02.t^2 + sum(x1)^2*s01.hat/x01.t^4 + sum(x2)^2*s02.hat/x02.t^4 -2*sum(x2)*sum(x1)*s012.hat/(x01.t^2*x02.t^2))
     LB   <- c(EST-za*SE)
     UB   <- c(EST+za*SE)
   }
@@ -363,7 +365,7 @@ deltaMethodF <- function(x1=NA,x2=NA,x3=NA,n1=NA,n2=NA,n3=NA,alpha=0.05,refPop=N
 
 
 nleqslv2 <- function(x,fn,...,positive=FALSE) {
-  res <- nleqslv(x,fn,...)
+  res <- nleqslv::nleqslv(x,fn,...)
   res$root   <- ifelse(positive==TRUE & res$x < 0, NA,res$x)
   res$f.root <- ifelse(positive==TRUE & res$x < 0, 10,res$fvec)
   res$estim.precis <- sum(abs(res$fvec))
@@ -1792,7 +1794,7 @@ list("out"=out,"sv2"=sv2)}
 
 
 
-boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,R2=NA,alpha2=0.025,type="UB",altParam=0,method.rr="OP",unCond=0)   {
+boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,R2=NA,alpha2=0.025,type="UB",altParam=0,method.rr="OP",unCond=0,fast=0)   {
   out  <- NA
   ntry <- 0
   use.force <- 0
@@ -1811,7 +1813,7 @@ boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,R2=NA,alpha2=0.025,typ
     if (type=="LB") start.r  <- max.r
     if (type=="LB") last.r   <- min.r
     mult <- 0.01
-    if (abs(EST) <= 0.05) mult <- 0.001
+    if (abs(EST) <= 0.05 & fast==0) mult <- 0.001
     poss.r  <- seq(start.r,last.r,by=ifelse(type=="LB",-1,1)*mult)
     poss.d  <- matrix(NA,ncol=1,nrow=length(poss.r))
     sv      <- NA
@@ -1842,8 +1844,8 @@ boundR2    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,R2=NA,alpha2=0.025,typ
   out}
 
 
-boundR    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025, type="UB",altParam=0,       method.rr="TP",     unCond=0)  {
-  out <- boundR2(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha2,type=type,altParam=altParam,method.rr=method.rr,unCond=unCond)
+boundR    <- function(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=0.025, type="UB",altParam=0,       method.rr="TP",     unCond=0, fast=0)  {
+  out <- boundR2(EST,x1,x2,x3,x4,n1,n2,n3,n4,tr,Z,Y,alpha2=alpha2,type=type,altParam=altParam,method.rr=method.rr,unCond=unCond, fast=0)
   out
 }
 
@@ -1926,5 +1928,8 @@ boundR.LRT <- function(init.r=NA,x1=NA,x2=NA,x3=NA,x4=NA,n1=NA,n2=NA,n3=NA,n4=NA
   poss.r2[i]
 }
 
+#######################################################################################################################################################################
+###
+#######################################################################################################################################################################
 
 
