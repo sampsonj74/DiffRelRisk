@@ -1,0 +1,15 @@
+Package: DiffRelRisk
+Type: Package
+Title: Confidence Intervals for the Difference Between Two Relative
+        Risks
+Version: 1.0.12
+Date: 2019-10-22
+Author: Joshua Neil Sampson and Mitchell H. Gail
+Maintainer: <wheelerb@imsweb.com>
+Description: Estimates and provides a confidence interval for the difference 
+  between two relative risks from data that may contain small sample sizes,
+  stratified studies, or individual-level covariates.
+License: GPL-2
+Depends: stats, nleqslv
+NeedsCompilation: yes
+Packaged: 2019-10-22 14:37:04 UTC; wheelerwi

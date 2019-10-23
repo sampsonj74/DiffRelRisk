@@ -1,0 +1,4 @@
+useDynLib(DiffRelRisk)
+import(nleqslv)
+import(stats)
+export(DRRCI_unadj, DRRCI_adj, DRRCI_counts)
